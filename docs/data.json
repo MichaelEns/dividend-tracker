@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-04T21:35:29+00:00",
+  "generatedAt": "2026-08-04T22:18:58+00:00",
   "asOfDate": "2026-08-04",
   "version": "1.0.0",
   "horizonYears": 3,
@@ -1196,12 +1196,12 @@
       "name": "Fidelity Total Market Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr and Dec; December typically also carries the capital-gain distribution.",
-      "price": 209.45,
+      "price": 213.32,
       "currency": "USD",
       "cadence": "semiannual",
       "cadenceDays": 119,
       "trailing12m": 1.95,
-      "yieldPct": 0.931,
+      "yieldPct": 0.9141,
       "growthRate": 0.02851,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
