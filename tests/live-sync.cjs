@@ -21,6 +21,10 @@ const { spawn } = require('node:child_process');
 
 const BROWSER = process.argv[2];
 const PASSPHRASE = process.argv[3];
+// With no URL the page is served from docs/ with WORKER_BASE rewritten to a
+// local `wrangler dev`. Pass the deployed site to test production instead -
+// that origin must be in the worker's ALLOWED_ORIGINS.
+const LIVE_URL = process.argv[4] || '';
 const CLIENT_ID = process.env.PLAID_CLIENT_ID;
 const SECRET = process.env.PLAID_SECRET;
 const WORKER = 'http://127.0.0.1:8787';
@@ -127,8 +131,9 @@ async function main() {
   if (!BROWSER || !PASSPHRASE) throw new Error('usage: node tests/live-sync.cjs <browser> <passphrase>');
   if (!CLIENT_ID || !SECRET) throw new Error('set PLAID_CLIENT_ID and PLAID_SECRET');
 
-  const server = await serve();
-  const url = `http://127.0.0.1:${SITE_PORT}/index.html`;
+  const server = LIVE_URL ? null : await serve();
+  const url = LIVE_URL || `http://127.0.0.1:${SITE_PORT}/index.html`;
+  console.log('testing: ' + url + '\n');
   const profile = path.join(os.tmpdir(), 'divtracker-live-' + Date.now());
   const proc = spawn(BROWSER, [
     '--headless=new', `--remote-debugging-port=${CDP_PORT}`, '--remote-allow-origins=*',
@@ -161,7 +166,7 @@ async function main() {
 
     console.log('configuration:');
     const cfg = await evalJs('JSON.stringify(window.DIVTRACKER_CONFIG)');
-    check('page picked up WORKER_BASE', cfg.includes('8787'), cfg);
+    check('page picked up WORKER_BASE', cfg.includes(LIVE_URL ? 'workers.dev' : '8787'), cfg);
     const btn = await evalJs(`(() => {
       const b = document.getElementById('sync-bank');
       return JSON.stringify({ exists: !!b, hidden: b ? b.hidden : null });
@@ -210,6 +215,18 @@ async function main() {
 
     const stored = await evalJs("localStorage.getItem('divtracker.holdingLots.v1')");
     check('a sync matching nothing wrote nothing', !stored || stored === '{}', String(stored));
+
+    // Once a TOKENS namespace is bound the worker remembers the connection, so
+    // the next sync would refresh through it rather than link afresh. That is
+    // the whole point of KV, and it means a second scenario needs a clean slate.
+    const disconnect = async () => evalJs(`(async () => {
+      const base = window.DIVTRACKER_CONFIG.WORKER_BASE;
+      const r = await fetch(base + '/item/disconnect', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Sync-Key': ${JSON.stringify(PASSPHRASE)} },
+        body: '{}' });
+      return r.status + ' ' + (await r.text());
+    })()`);
+    console.log('         disconnect: ' + await disconnect());
 
     /* ---------------------------------------------------------------------
      * The real scenario: U.S. Bank holds some FXAIX by hand, then the broker
@@ -268,11 +285,40 @@ async function main() {
     check('the table rendered real dollar amounts from the synced shares',
       JSON.parse(rendered).rows > 0 && JSON.parse(rendered).hasDollars, rendered);
 
+    /* ---------------------------------------------------------------------
+     * Pressing sync again. With KV bound the worker must reuse the stored
+     * token: no Plaid Link, no new Item, no Trial slot consumed. This is the
+     * path that makes the free tier survive more than ten syncs, so it is
+     * worth proving from the browser rather than only against the API.
+     * ------------------------------------------------------------------- */
+    const status3 = await evalJs(`(async () => {
+      window.Plaid = { create: () => ({ open: () => { window.__relinked = true; } }) };
+      window.__relinked = false;
+      document.getElementById('sync-bank').click();
+      await new Promise((r) => setTimeout(r, 8000));
+      const el = document.getElementById('sync-status');
+      return JSON.stringify({ status: el ? el.textContent.trim() : '', relinked: window.__relinked });
+    })()`);
+    const again = JSON.parse(status3);
+    console.log('         status line: ' + again.status);
+    const persisted = /Connection saved/.test(status2);
+    if (!persisted) {
+      console.log('         (no KV namespace bound on this worker; refresh path not applicable)');
+    } else {
+      check('a second sync refreshed instead of re-linking',
+        /Refreshed \d+ position\(s\)/.test(again.status), again.status);
+      check('no bank sign-in was needed', again.relinked === false, 'Plaid Link was opened');
+      check('the refresh says so plainly', /No new bank sign-in needed/.test(again.status), again.status);
+    }
+
+    // Leave no live connection behind on a worker that outlives this test.
+    if (persisted) console.log('         cleanup: ' + await disconnect());
+
     console.log(fails === 0 ? '\nLIVE SYNC VERIFIED' : `\n${fails} CHECK(S) FAILED`);
   } finally {
     if (ws) ws.close();
     try { process.kill(proc.pid); } catch { /* already gone */ }
-    server.close();
+    if (server) server.close();
     // The browser may still be releasing its profile; losing a temp dir is not
     // worth failing a passing run over.
     try { fs.rmSync(profile, { recursive: true, force: true }); } catch { /* ignore */ }

@@ -565,13 +565,28 @@ $env:PLAID_CLIENT_ID="..."; $env:PLAID_SECRET="..."
 node tests\live-sync.cjs "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" <passphrase>
 ```
 
-It runs two scenarios against Plaid Sandbox. The first uses the stock test
+It runs three scenarios against Plaid Sandbox. The first uses the stock test
 user, whose holdings deliberately match nothing this page tracks, and asserts
 the page says so clearly and writes nothing. The second builds a
 [custom Sandbox user](https://plaid.com/docs/sandbox/user-custom/) holding
 MSFT, FXAIX and an untracked NVDA, against a hand-entered U.S. Bank position,
 and asserts the flagship guarantee end to end: the broker's shares land, NVDA
-is ignored, and the U.S. Bank shares are still there afterwards.
+is ignored, and the U.S. Bank shares are still there afterwards. The third
+presses sync again and asserts the worker refreshed through the stored token
+rather than reopening Plaid Link — the behaviour the KV binding exists for,
+and the reason the free tier survives more than ten syncs.
+
+Because a bound KV namespace makes the worker remember its connection, the
+test disconnects between scenarios and again at the end, so it neither
+inherits state nor leaves a live token behind.
+
+Pass the deployed site as a fourth argument to test production instead. No
+local worker is needed then — the page uses whatever `WORKER_BASE` it was
+published with, and that origin must be in the worker's `ALLOWED_ORIGINS`:
+
+```powershell
+node tests\live-sync.cjs "<edge path>" <passphrase> https://michaelens.github.io/dividend-tracker/index.html
+```
 
 ## Privacy
 
