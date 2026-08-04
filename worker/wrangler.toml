@@ -8,8 +8,24 @@ workers_dev = true
 #   PLAID_SECRET
 #   PLAID_ENV                (sandbox | development | production; default: production)
 #   ALLOWED_ORIGINS          (comma-separated, e.g. https://<you>.github.io)
+#   SYNC_PASSPHRASE          (long random string; REQUIRED - endpoints fail closed without it)
 #
 # No public/secret values live in this file.
+#
+# Token storage. Plaid's free Trial plan allows 10 Production Items for the
+# lifetime of the account and does NOT refund a slot when an Item is removed,
+# so re-linking on every sync would exhaust it after ten syncs. Binding this
+# namespace lets the worker link once and refresh through the stored token
+# indefinitely. Create it with:
+#
+#   wrangler kv namespace create TOKENS
+#
+# then paste the printed id below and uncomment the block. Without it the
+# worker still works, but falls back to one-off remove-after-read.
+#
+# [[kv_namespaces]]
+# binding = "TOKENS"
+# id = "<paste-the-id-from-wrangler-kv-namespace-create>"
 
 [vars]
 PLAID_PRODUCTS = "investments"

@@ -5,10 +5,10 @@ dividends & distributions for the tickers you configure — MSFT, FXAIX, FSKAX
 out of the box. Deployed to GitHub Pages so it's reachable from your phone or
 any personal machine, with **no** corporate-network dependency.
 
-Optional: a Cloudflare Worker + Plaid Link lets you do a **one-off federated
-sync** of your share counts from Fidelity, US Bank, or any Plaid-supported
-brokerage. Nothing about your accounts is ever published — share counts live
-only in your browser's localStorage.
+Optional: a Cloudflare Worker + Plaid Link lets you **federate your share
+counts** from Fidelity, US Bank, or any Plaid-supported brokerage. Nothing
+about your accounts is ever published — share counts live only in your
+browser's localStorage.
 
 ## Features
 
@@ -57,15 +57,48 @@ needed on a clean CI runner.
 ## Optional: federated sync from Fidelity / US Bank via Plaid
 
 Because a static site cannot hold API secrets, holdings sync uses a small
-Cloudflare Worker. The Worker never persists tokens — it exchanges the Plaid
-`public_token`, calls `/investments/holdings/get`, aggregates
-`{symbol: shares}`, then calls `/item/remove` to discard the access token
-before responding. The browser only ever sees the share counts.
+Cloudflare Worker. The Worker exchanges the Plaid `public_token`, calls
+`/investments/holdings/get`, aggregates `{symbol: shares}`, and stores the
+access token in Cloudflare KV so later syncs reuse it. The browser only ever
+sees the share counts — never the Plaid token.
+
+### Why the token is stored (and why it must be)
+
+Plaid's free **Trial plan** has no expiry date, includes Investments, and allows
+**10 Production Items for the lifetime of the account**. Crucially, removing an
+Item does *not* give the slot back:
+
+> Removing Items created on a Trial plan (using `/item/remove`) will **not**
+> allow you to create more Items.
+> — <https://plaid.com/docs/account/billing/>
+
+So a connect → read → remove cycle burns one of the ten slots on *every* sync
+and dies permanently on the eleventh. Linking once and refreshing through the
+stored token keeps this free indefinitely.
+
+Note the tradeoff inverts on a paid plan: Investments is a **subscription-fee**
+product billed monthly for as long as a valid access token exists, so there
+`/item/remove` saves money. Use **Disconnect bank** if you upgrade and want
+billing to stop.
+
+### A stored token requires a passphrase
+
+With no stored token, producing holdings required completing Plaid Link with
+your own bank credentials, so an `Origin` check was enough. Once a token is
+stored, `/holdings/refresh` would hand real positions to any caller — and the
+`Origin` header is trivially forged outside a browser (`curl -H "Origin: ..."`),
+while this site is public, so the Worker URL is public too.
+
+Every sensitive endpoint therefore requires `SYNC_PASSPHRASE`, sent as the
+`X-Sync-Key` header and compared in constant time. It **fails closed**: if the
+secret is unset, every request is rejected rather than allowed.
 
 ### 1. Register a Plaid app
 
 - Sign up at <https://dashboard.plaid.com>.
 - Enable the **Investments** product.
+- Apply for the free [Trial plan](https://dashboard.plaid.com/trial-plan)
+  (US/CA, teams created on or after 2026-04-15) to use real data at no cost.
 - In "Team Settings → Allowed redirect URIs", add
   `https://<you>.github.io/<repo>/` (only if using OAuth institutions like
   Fidelity's flow that requires a redirect).
@@ -73,18 +106,40 @@ before responding. The browser only ever sees the share counts.
   (`sandbox`, `development`, or `production`). Sandbox is free with fake
   credentials; production requires Plaid approval for individuals.
 
+> **Fidelity / Charles Schwab:** Plaid calls these out as needing explicit
+> institution access approval once you move to a paid plan. Trial covers "most
+> OAuth institutions" but not guaranteed. Confirm your broker actually links
+> before relying on this path.
+
 ### 2. Deploy the Worker
 
 ```powershell
 cd worker
 npm install
 npx wrangler login
+
+# Storage for the Plaid access token, so syncing never burns a Trial slot.
+npx wrangler kv namespace create TOKENS
+# Paste the printed id into worker/wrangler.toml and uncomment the
+# [[kv_namespaces]] block, then continue:
+
 npx wrangler secret put PLAID_CLIENT_ID       # paste your client_id
 npx wrangler secret put PLAID_SECRET          # paste the secret for the env you use
 npx wrangler secret put PLAID_ENV             # sandbox | development | production
 npx wrangler secret put ALLOWED_ORIGINS       # https://<you>.github.io  (comma-separate to add more)
+npx wrangler secret put SYNC_PASSPHRASE       # long random string; required
 npx wrangler deploy
 ```
+
+Generate a passphrase with:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+If you skip the KV namespace the Worker still runs, but falls back to the old
+one-off remove-after-read behaviour — which is capped at 10 syncs forever on a
+Trial plan.
 
 Wrangler will print the Worker URL, e.g. `https://divtracker-plaid.<you>.workers.dev`.
 
@@ -100,8 +155,22 @@ window.DIVTRACKER_CONFIG = {
 ```
 
 Commit; the workflow republishes. The "Sync from bank" button now appears in
-the **Your holdings** panel. Click it → Plaid Link opens → sign in to Fidelity
-or US Bank → the page caches your shares and shows a fresh, green pill.
+the **Your holdings** panel. The first click prompts for your passphrase (kept
+in localStorage) and opens Plaid Link to sign in to Fidelity or US Bank. Every
+click after that reuses the saved connection — no bank sign-in, no new Plaid
+Item, no cost. **Disconnect bank** removes the stored token.
+
+### Worker endpoints
+
+| Endpoint | Purpose | Creates a Plaid Item? |
+| --- | --- | --- |
+| `POST /status` | Is a connection stored? | No |
+| `POST /link/token/create` | Start Plaid Link | No |
+| `POST /link/token/exchange` | Finish Link, store token, read holdings | **Yes** |
+| `POST /holdings/refresh` | Re-read holdings via stored token | No |
+| `POST /item/disconnect` | `/item/remove` + forget the token | No |
+
+All of the above require `X-Sync-Key`. Only `/` and `/health` are unauthenticated.
 
 ### Freshness pill
 
@@ -147,6 +216,9 @@ cd ..; node tests\smoke.cjs "C:\Program Files (x86)\Microsoft\Edge\Application\m
 - Share counts, sync source, and last-synced timestamp are stored **only** in
   your browser's localStorage (`divtracker.*.v1` keys). Use "Clear" in the
   Your holdings panel to wipe them.
-- The Cloudflare Worker never persists Plaid tokens; each sync is one-off.
+- The Cloudflare Worker stores one Plaid access token in your own Cloudflare KV
+  so repeat syncs stay free. It is never sent to the browser, every endpoint
+  that can read it requires `SYNC_PASSPHRASE`, and **Disconnect bank** deletes
+  it. Skip the KV binding to keep the older token-less behaviour instead.
 - The public GitHub Pages site contains only per-share amounts — no
   account-linkable data.

@@ -11,6 +11,7 @@
 const HOLDINGS_KEY = 'divtracker.holdings.v1';
 const PREFS_KEY = 'divtracker.prefs.v1';
 const SYNC_META_KEY = 'divtracker.syncMeta.v1';
+const SYNC_KEY_KEY = 'divtracker.syncKey.v1';
 
 const CONFIG = (typeof window !== 'undefined' && window.DIVTRACKER_CONFIG) || {};
 const QUARTER_DAYS = Number(CONFIG.QUARTER_DAYS) > 0 ? Number(CONFIG.QUARTER_DAYS) : 92;
@@ -538,6 +539,11 @@ function bindEvents() {
     syncButton.addEventListener('click', () => syncFromBank());
   }
 
+  const disconnectButton = document.getElementById('disconnect-bank');
+  if (disconnectButton) {
+    disconnectButton.addEventListener('click', () => disconnectBank());
+  }
+
   document.getElementById('drip-toggle').addEventListener('change', (event) => {
     state.prefs.drip = event.target.checked;
     save(PREFS_KEY, state.prefs);
@@ -585,18 +591,24 @@ function setStatus(message, kind) {
 
 /* ------------------------------------------------------------ federated sync
  *
- * "Sync from bank" opens Plaid Link and completes a one-off share-count
- * download via the Cloudflare Worker configured in docs/config.js.
+ * "Sync from bank" pulls share counts through the Cloudflare Worker in
+ * docs/config.js.
  *
- * Flow:
- *   1. POST worker /link/token/create               -> { link_token }
- *   2. Plaid.create({token}).open()                 -> public_token on success
- *   3. POST worker /link/token/exchange             -> { holdings, institution }
+ * First run (links the Plaid Item):
+ *   1. POST worker /link/token/create   -> { link_token }
+ *   2. Plaid.create({token}).open()     -> public_token on success
+ *   3. POST worker /link/token/exchange -> { holdings, institution }
  *
- * The Worker exchanges public_token for an access_token, calls Plaid's
- * /investments/holdings/get endpoint, aggregates {symbol: shares}, and then
- * discards the access token. The browser never sees the access token, and the
- * page never stores credentials. */
+ * Every run after that:
+ *   POST worker /holdings/refresh       -> { holdings, institution }
+ *
+ * The refresh path creates no new Plaid Item, which is what keeps this free
+ * forever: Plaid's Trial plan allows 10 Items for the lifetime of the account
+ * and never refunds a slot, so re-linking each time would run out after ten.
+ *
+ * The browser never sees the Plaid access token. It does hold the worker
+ * passphrase, which is stored locally and sent as X-Sync-Key - without it the
+ * worker would expose real holdings to anyone who found its URL. */
 
 function loadPlaidSdk() {
   if (window.Plaid) return Promise.resolve();
@@ -608,6 +620,63 @@ function loadPlaidSdk() {
     s.onerror = () => reject(new Error('Could not load the Plaid Link SDK. Check your network.'));
     document.head.appendChild(s);
   });
+}
+
+function getSyncKey(promptIfMissing) {
+  let key = '';
+  try { key = window.localStorage.getItem(SYNC_KEY_KEY) || ''; } catch { key = ''; }
+  if (!key && promptIfMissing) {
+    key = (window.prompt('Enter the sync passphrase you set on the worker (SYNC_PASSPHRASE):') || '').trim();
+    if (key) { try { window.localStorage.setItem(SYNC_KEY_KEY, key); } catch { /* ignore */ } }
+  }
+  return key;
+}
+
+function forgetSyncKey() {
+  try { window.localStorage.removeItem(SYNC_KEY_KEY); } catch { /* ignore */ }
+}
+
+async function workerPost(path, body, key) {
+  const resp = await fetch(`${WORKER_BASE}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Sync-Key': key,
+    },
+    body: JSON.stringify(body || {}),
+  });
+  let payload = null;
+  try { payload = await resp.json(); } catch { /* leave null */ }
+  if (!resp.ok) {
+    if (resp.status === 401) {
+      // Stale or mistyped passphrase: drop it so the next attempt re-prompts.
+      forgetSyncKey();
+      throw new Error('Worker rejected the passphrase. It has been cleared; try again.');
+    }
+    throw new Error((payload && payload.error) || `Worker ${path} returned HTTP ${resp.status}`);
+  }
+  return payload || {};
+}
+
+/* Applies a {SYMBOL: shares} map, keeping only tracked tickers. */
+function applyHoldings(holdings, source) {
+  const known = new Set(state.data.symbols.map((s) => s.symbol));
+  let kept = 0;
+  Object.entries(holdings).forEach(([sym, qty]) => {
+    const upper = String(sym || '').toUpperCase();
+    const value = Number(qty);
+    if (!Number.isFinite(value) || value <= 0) return;
+    if (!known.has(upper)) return;
+    state.holdings[upper] = value;
+    kept += 1;
+  });
+  if (kept === 0) return 0;
+  save(HOLDINGS_KEY, state.holdings);
+  markSynced(source);
+  renderHoldingsInputs();
+  renderSyncPill();
+  render();
+  return kept;
 }
 
 async function syncFromBank() {
@@ -622,60 +691,70 @@ async function syncFromBank() {
     button.disabled = false;
     button.innerHTML = original;
   };
+
+  const key = getSyncKey(true);
+  if (!key) {
+    setStatus('A sync passphrase is required. Set SYNC_PASSPHRASE on the worker first.', 'error');
+    return;
+  }
+
   try {
-    if (button) { button.disabled = true; button.textContent = 'Preparing sign-in…'; }
+    if (button) { button.disabled = true; button.textContent = 'Checking connection…'; }
+
+    // Reuse the stored Plaid Item when there is one. This is the whole point:
+    // no new Item means no Trial-plan slot consumed and no bank sign-in.
+    const status = await workerPost('/status', {}, key);
+    if (status.connected) {
+      setStatus('Refreshing holdings through the saved connection…', 'ok');
+      if (button) button.textContent = 'Refreshing…';
+      const payload = await workerPost('/holdings/refresh', {}, key);
+      const holdings = payload && payload.holdings;
+      if (!holdings || typeof holdings !== 'object') throw new Error('The worker returned no holdings.');
+      const source = payload.institution || status.institution || 'Bank sync';
+      const kept = applyHoldings(holdings, source);
+      if (kept === 0) {
+        setStatus(`No tracked symbols returned from ${source}. `
+          + `Held ${Object.keys(holdings).length} position(s) but none matched configured tickers.`, 'error');
+      } else {
+        setStatus(`Refreshed ${kept} position(s) from ${source}. No new bank sign-in needed.`, 'ok');
+      }
+      restore();
+      return;
+    }
+
+    if (button) button.textContent = 'Preparing sign-in…';
     setStatus('Requesting a link token from the sync worker…', 'ok');
 
-    const linkResp = await fetch(`${WORKER_BASE}/link/token/create`, { method: 'POST' });
-    if (!linkResp.ok) throw new Error(`Worker /link/token/create returned HTTP ${linkResp.status}`);
-    const { link_token: linkToken } = await linkResp.json();
+    const { link_token: linkToken } = await workerPost('/link/token/create', {}, key);
     if (!linkToken) throw new Error('The worker did not return a link_token.');
 
     await loadPlaidSdk();
     if (button) button.textContent = 'Waiting for bank sign-in…';
-    setStatus('Sign in to your bank in the Plaid window. This is a one-off; no credentials are stored.', 'ok');
+    setStatus('Sign in to your bank in the Plaid window. This is a one-time link; later syncs reuse it.', 'ok');
 
     const handler = window.Plaid.create({
       token: linkToken,
       onSuccess: async (publicToken, metadata) => {
         try {
           if (button) button.textContent = 'Fetching holdings…';
-          const resp = await fetch(`${WORKER_BASE}/link/token/exchange`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ public_token: publicToken }),
-          });
-          if (!resp.ok) throw new Error(`Worker /link/token/exchange returned HTTP ${resp.status}`);
-          const payload = await resp.json();
+          const payload = await workerPost('/link/token/exchange', { public_token: publicToken }, key);
           const holdings = payload && payload.holdings;
           if (!holdings || typeof holdings !== 'object') {
             throw new Error('The worker returned no holdings.');
           }
-          const known = new Set(state.data.symbols.map((s) => s.symbol));
-          let kept = 0;
-          Object.entries(holdings).forEach(([sym, qty]) => {
-            const upper = String(sym || '').toUpperCase();
-            const value = Number(qty);
-            if (!Number.isFinite(value) || value <= 0) return;
-            if (!known.has(upper)) return;
-            state.holdings[upper] = value;
-            kept += 1;
-          });
+          const source = payload.institution
+            || (metadata && metadata.institution && metadata.institution.name)
+            || 'Bank sync';
+          const kept = applyHoldings(holdings, source);
           if (kept === 0) {
-            setStatus(`No tracked symbols returned from ${metadata && metadata.institution ? metadata.institution.name : 'the bank'}. `
+            setStatus(`No tracked symbols returned from ${source}. `
               + `Held ${Object.keys(holdings).length} positions but none matched configured tickers.`, 'error');
             restore();
             return;
           }
-          save(HOLDINGS_KEY, state.holdings);
-          const source = payload.institution
-            || (metadata && metadata.institution && metadata.institution.name)
-            || 'Bank sync';
-          markSynced(source);
-          renderHoldingsInputs();
-          renderSyncPill();
-          render();
-          setStatus(`Synced ${kept} position(s) from ${source}. Access token discarded.`, 'ok');
+          setStatus(payload.persisted
+            ? `Synced ${kept} position(s) from ${source}. Connection saved, so future syncs skip the bank sign-in.`
+            : `Synced ${kept} position(s) from ${source}. Access token discarded (no KV bound).`, 'ok');
         } catch (err) {
           setStatus('Sync failed: ' + err.message, 'error');
         } finally {
@@ -696,6 +775,21 @@ async function syncFromBank() {
   }
 }
 
+async function disconnectBank() {
+  if (!WORKER_BASE) return;
+  const key = getSyncKey(true);
+  if (!key) return;
+  if (!window.confirm('Disconnect the saved bank connection?\n\nHoldings already on this device are kept. Reconnecting later uses another of the 10 Plaid Trial slots.')) return;
+  try {
+    setStatus('Disconnecting…', 'ok');
+    await workerPost('/item/disconnect', {}, key);
+    setStatus('Bank connection removed. The stored access token is gone.', 'ok');
+    renderSyncPill();
+  } catch (err) {
+    setStatus('Disconnect failed: ' + err.message, 'error');
+  }
+}
+
 /* ---------------------------------------------------------------------- init */
 
 async function init() {
@@ -707,6 +801,18 @@ async function init() {
 
   const syncBtn = document.getElementById('sync-bank');
   if (syncBtn) syncBtn.hidden = !WORKER_BASE;
+
+  // Only offer "Disconnect" once a connection is actually stored. Probing
+  // requires the passphrase, so stay quiet if it has not been entered yet.
+  const disconnectBtn = document.getElementById('disconnect-bank');
+  if (disconnectBtn) {
+    disconnectBtn.hidden = true;
+    if (WORKER_BASE && getSyncKey(false)) {
+      workerPost('/status', {}, getSyncKey(false))
+        .then((s) => { disconnectBtn.hidden = !(s && s.connected); })
+        .catch(() => { /* offline or bad key: leave hidden */ });
+    }
+  }
 
   renderSyncPill();
 
