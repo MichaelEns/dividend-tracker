@@ -58,6 +58,9 @@ jobs:
       - name: Run freshness tests
         run: node --test tests/freshness.test.cjs
 
+      - name: Run quarter tests
+        run: node --test tests/quarters.test.cjs
+
       - name: Refresh data.json
         run: python build.py --verbose
 

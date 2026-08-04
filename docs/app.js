@@ -46,6 +46,30 @@ function formatDate(value) {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+/** Month + day only. Used where a nearby date already establishes the year. */
+function formatDateShort(value) {
+  const date = parseDate(value);
+  if (!date) return '—';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * The calendar quarter a distribution belongs to.
+ *
+ * Keyed off the ex-date, which is both how dividends are conventionally
+ * labelled ("the Q1 dividend") and the column the table sorts by. Using the pay
+ * date instead would scatter the colour bands, because a late-March ex-date
+ * often pays in April and would land in a different quarter from the rows it
+ * sits between.
+ */
+function quarterOf(value) {
+  const date = value instanceof Date ? value : parseDate(value);
+  if (!date || Number.isNaN(date.getTime())) return null;
+  const index = Math.floor(date.getMonth() / 3) + 1;
+  const year = date.getFullYear();
+  return { index, year, key: `${year}-Q${index}`, label: `Q${index} ${year}` };
+}
+
 function money(value, digits = 2) {
   return value.toLocaleString(undefined, {
     style: 'currency',
@@ -641,11 +665,35 @@ function renderHoldingsInputs() {
     : 'Tap to enter share counts';
 }
 
+/**
+ * Whether the table is folded down to Symbol / Date / Amount.
+ *
+ * Must stay in step with the 560px breakpoint in styles.css. The duplication is
+ * unavoidable: `display: none` genuinely removes a cell from its row, so the
+ * footer's colspan has to shrink to match, and colspan is an HTML attribute
+ * that CSS cannot touch. Left at 5 on a narrow screen it forces the table to
+ * keep six columns and the whole thing scrolls sideways again.
+ */
+const COMPACT_QUERY = '(max-width: 560px)';
+
+function compactLayout() {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia(COMPACT_QUERY).matches
+    : false;
+}
+
 function renderTable(rows) {
   const body = document.getElementById('dist-body');
   const empty = document.getElementById('empty-state');
   const today = state.today;
   const hasHoldings = Object.values(state.holdings).some((v) => v > 0);
+
+  // Drop the old footer before the empty-set check. Leaving it behind showed a
+  // total for rows that are no longer on screen, and now that its colspan is
+  // layout-dependent it would also be left spanning five columns in a table
+  // folded down to three.
+  const staleFoot = document.querySelector('#dist-table tfoot');
+  if (staleFoot) staleFoot.remove();
 
   if (!rows.length) {
     body.innerHTML = '';
@@ -655,6 +703,8 @@ function renderTable(rows) {
   empty.hidden = true;
 
   const nextIdx = rows.findIndex((r) => r.date > today);
+  let lastQuarterKey = null;
+
   body.innerHTML = rows
     .map((row, idx) => {
       const badge = `<span class="badge ${row.status}">${row.status}</span>`;
@@ -664,24 +714,43 @@ function renderTable(rows) {
       const tooltip = row.status === 'projected'
         ? row.basis
         : [row.source, row.note].filter(Boolean).join(' — ');
-      return `<tr class="${row.status}${idx === nextIdx ? ' next-up' : ''}">
-        <td><span class="sym">${row.symbol}</span><span class="kind">${KIND_LABEL[row.kind] || row.kind}</span></td>
-        <td>${formatDate(row.exDate)}</td>
-        <td>${row.payDate ? formatDate(row.payDate) : '—'}</td>
-        <td class="num">${perShare(row.amount)}</td>
-        <td class="num">${row.shares != null ? shareText(row.shares) : '—'}</td>
-        <td class="num">${row.dollars != null ? money(row.dollars) : '—'}</td>
-        <td title="${String(tooltip).replace(/"/g, '&quot;')}">${badge}${conf}</td>
+
+      const quarter = quarterOf(row.date);
+      // Label the first row of each run so the band has a heading, and keep the
+      // label in the accessibility tree on the rest: a colour stripe alone
+      // conveys nothing to a screen reader or to anyone who can't tell the
+      // hues apart.
+      const startsQuarter = quarter && quarter.key !== lastQuarterKey;
+      if (quarter) lastQuarterKey = quarter.key;
+      const quarterMark = quarter
+        ? (startsQuarter
+          ? `<span class="quarter">${quarter.label}</span>`
+          : `<span class="visually-hidden">${quarter.label}</span>`)
+        : '';
+
+      // Narrow screens hide the per-share and shares columns, so the amount
+      // cell has to carry the breakdown itself - otherwise anyone who hasn't
+      // entered share counts sees a column of em dashes and nothing else.
+      const amountAlt = row.dollars != null
+        ? `${perShare(row.amount)} × ${shareText(row.shares)} sh`
+        : `${perShare(row.amount)} / share`;
+
+      return `<tr class="dist-row ${row.status}${quarter ? ' q' + quarter.index : ''}${idx === nextIdx ? ' next-up' : ''}">
+        <td class="c-sym"><span class="sym">${row.symbol}</span><span class="status-mini ${row.status}">${row.status}</span><span class="kind">${KIND_LABEL[row.kind] || row.kind}</span></td>
+        <td class="c-ex"><span class="date-main">${formatDate(row.exDate)}</span>${quarterMark}<span class="date-alt">${row.payDate ? 'pays ' + formatDateShort(row.payDate) : 'pay date TBD'}</span></td>
+        <td class="c-pay">${row.payDate ? formatDate(row.payDate) : '—'}</td>
+        <td class="c-per num">${perShare(row.amount)}</td>
+        <td class="c-sh num">${row.shares != null ? shareText(row.shares) : '—'}</td>
+        <td class="c-amt num"><span class="amt${row.dollars != null ? '' : ' amt-none'}">${row.dollars != null ? money(row.dollars) : '—'}</span><span class="amt-alt">${amountAlt}</span></td>
+        <td class="c-status" title="${String(tooltip).replace(/"/g, '&quot;')}">${badge}${conf}</td>
       </tr>`;
     })
     .join('');
 
   const total = rows.reduce((acc, r) => acc + (hasHoldings ? (r.dollars || 0) : r.amount), 0);
-  const existing = document.querySelector('#dist-table tfoot');
-  if (existing) existing.remove();
   const tfoot = document.createElement('tfoot');
-  tfoot.innerHTML = `<tr><td colspan="5">Total shown (${rows.length} row${rows.length === 1 ? '' : 's'})</td>
-    <td class="num">${hasHoldings ? money(total) : perShare(total)}</td><td></td></tr>`;
+  tfoot.innerHTML = `<tr><td colspan="${compactLayout() ? 2 : 5}">Total shown (${rows.length} row${rows.length === 1 ? '' : 's'})</td>
+    <td class="c-amt num">${hasHoldings ? money(total) : perShare(total)}</td><td class="c-status"></td></tr>`;
   document.getElementById('dist-table').appendChild(tfoot);
 }
 
@@ -1200,6 +1269,12 @@ async function init() {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) renderStaleness();
   });
+
+  // Rotating the phone crosses the breakpoint, and the footer's colspan is
+  // baked into the markup at render time, so the table has to be rebuilt.
+  if (typeof window.matchMedia === 'function') {
+    window.matchMedia(COMPACT_QUERY).addEventListener('change', () => render());
+  }
   renderNotes();
   bindEvents();
   render();
@@ -1219,6 +1294,7 @@ if (typeof module !== 'undefined' && module.exports) {
     parseCsv,
     extractHoldings,
     parseDate,
+    quarterOf,
     classifyFreshness,
     worstLevel,
     isConcerning,

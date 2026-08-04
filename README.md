@@ -22,6 +22,8 @@ browser's localStorage.
   interpolates **green → red over one quarter** (92 days) so you know when to
   refresh.
 - CSV import fallback for anyone who doesn't want to run the worker.
+- Distributions colour-coded by quarter, and a table that folds to three
+  columns in portrait so dates and dollar amounts stay side by side.
 - Staleness warnings that call out a stalled daily build or stale share counts,
   because a broken build renders identically to a healthy one.
 
@@ -174,6 +176,55 @@ Item, no cost. **Disconnect bank** removes the stored token.
 
 All of the above require `X-Sync-Key`. Only `/` and `/health` are unauthenticated.
 
+## Reading the table
+
+### Quarter colour bands
+
+Each row is striped and labelled by the calendar quarter of its **ex-date**.
+Ex-date rather than pay date for two reasons: it is how dividends are
+conventionally named (*"the Q1 dividend"*), and it is the column the table sorts
+by — keying off the pay date would scatter the bands, because a late-March
+ex-date often pays in April and would land in a different quarter from the rows
+it sits between.
+
+Hues run cool → warm through the year (Q1 blue, Q2 green, Q3 gold, Q4 rust) so
+the sequence reads as time passing rather than as four unrelated states. The
+same quarter in different years shares a hue by design; the label carries the
+year, and the key is `YYYY-Qn` so consecutive years never merge into one band.
+
+The label appears once at the top of each run rather than on every row, which
+would be noisy — the fixture data averages about two and a half rows per
+quarter. Rows further down the run still carry the label in a visually-hidden
+span, so **colour is never the only cue**: a screen reader announces the quarter
+on every row, and anyone who can't distinguish the hues still gets the text.
+
+### Portrait layout
+
+Seven columns do not fit on a phone. The old behaviour was a horizontally
+scrolling table, which meant you could never see a payment's date and its dollar
+amount at the same time — the two things you actually want to compare.
+
+Under 560px the table folds to three columns — **Symbol · Ex-date · Your
+amount** — and the rest is folded into those cells rather than dropped:
+
+| Hidden column | Where it goes |
+| ------------- | ------------- |
+| Pay date      | *"pays Sep 10"* under the ex-date (year omitted; the ex-date above supplies it) |
+| Per share     | *"$0.9100 × 100 sh"* under the amount |
+| Shares        | same line as per share |
+| Status        | a small pill inline beside the symbol |
+
+Two non-obvious details:
+
+- **`display: none` really removes a cell from its row**, so the footer's
+  `colspan` has to shrink to match. Left at 5 it forces the table to keep six
+  columns and the whole thing scrolls sideways again — which defeats the point.
+  `colspan` is an HTML attribute that CSS cannot touch, so `renderTable` reads
+  the breakpoint via `matchMedia` and re-renders when it is crossed.
+- **Without share counts the dollar column is all em dashes.** In portrait the
+  per-share column is gone, so the folded cell falls back to showing the
+  per-share rate instead of an empty-looking dash.
+
 ### Freshness pill
 
 The pill next to "Last updated" starts at day 0 = green
@@ -183,7 +234,6 @@ dividends in this tracker — so a red pill means it's plausible your share coun
 is now stale.
 
 ### Staleness warnings
-
 The pill above answers "how old are my share counts?" It does not cover the
 failure that actually misleads you: **`data.json` going stale**.
 
@@ -308,10 +358,12 @@ node --test tests/csv.test.cjs              # brokerage CSV import
 node --test tests/worker.test.mjs           # Plaid worker auth + origin checks + aggregation
 node --test tests/snaptrade.test.mjs        # SnapTrade request signing + position parsing
 node --test tests/freshness.test.cjs       # staleness classification + syncMeta migration
+node --test tests/quarters.test.cjs        # quarter bucketing for the colour bands
 ```
 
 There is also an end-to-end smoke test that loads the real page in headless Edge
-and asserts the table, filters, dollar maths and the staleness banner:
+and asserts the table, filters, dollar maths, the staleness banner, the quarter
+colour bands and the portrait layout:
 
 ```powershell
 cd docs; Start-Process python -ArgumentList '-m','http.server','8765'
