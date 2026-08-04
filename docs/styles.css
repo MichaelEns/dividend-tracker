@@ -57,12 +57,47 @@
 
 * { box-sizing: border-box; }
 
+/*
+ * The UA stylesheet hides [hidden] with `display: none`, but *any* author rule
+ * that sets `display` outranks it — and `.primary` below sets `display:
+ * inline-flex`. That silently un-hid the three sync buttons, so "Sync from
+ * bank" and "Sync via SnapTrade" were offered on a site with no worker
+ * deployed. Author-level !important is what reliably wins here.
+ */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-text-size-adjust: 100%;
+  /* Suppresses the platform's own pull-to-refresh so the one in app.js is the
+     only one, and behaves the same whether this is a tab or an installed app. */
+  overscroll-behavior-y: contain;
+}
+
+/*
+ * Pull-to-refresh indicator. Collapsed to zero height until a drag opens it, so
+ * it takes no space and needs no hidden/shown bookkeeping.
+ */
+.pull-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0;
+  overflow: hidden;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: .78rem;
+  pointer-events: none;
+  transition: height .2s ease;
 }
 
 .topbar {
@@ -366,8 +401,30 @@ tfoot td { font-weight: 650; border-top: 2px solid var(--border); }
   .c-sh,
   .c-status { display: none; }
 
+  /* Auto layout sizes each column to its widest unbreakable content, so the
+     table could still demand more width than the phone has - which is exactly
+     what happened on iOS, whose system font is wider than the one this was
+     measured in. Fixed layout caps the columns at shares of the available
+     width instead, so the fold can never reintroduce a sideways scroll no
+     matter how the text is rendered. */
+  #dist-table { table-layout: fixed; width: 100%; }
+  .c-sym { width: 41%; }
+  .c-ex { width: 29%; }
+  .c-amt { width: 30%; }
+
+  /* The desktop table deliberately keeps every cell on one line and scrolls
+     sideways to suit. A folded table has to do the opposite: with `nowrap`
+     still in force the columns physically cannot shrink to their share of the
+     width, and the amount spills past the right edge. The two figures that
+     must never break mid-token opt back out below. */
+  th, td { white-space: normal; overflow-wrap: anywhere; }
+  .date-main,
+  .sym,
+  .amt { white-space: nowrap; }
+
   .date-alt,
   .amt-alt { display: block; }
+  .alt-line { display: block; }
 
   /* Inline with the symbol rather than on its own line: an extra line per row
      costs about a row and a half of visible list on a phone. */

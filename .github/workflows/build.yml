@@ -61,6 +61,9 @@ jobs:
       - name: Run quarter tests
         run: node --test tests/quarters.test.cjs
 
+      - name: Run service worker tests
+        run: node --test tests/sw.test.cjs
+
       - name: Refresh data.json
         run: python build.py --verbose
 

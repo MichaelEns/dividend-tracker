@@ -28,6 +28,13 @@ const state = {
   // Test-only clock injection. Production reads the real clock per render, so
   // a tab left open overnight still crosses a staleness threshold.
   nowOverride: null,
+  // Service worker registration, once it resolves, so a refresh can ask it to
+  // look for a new build.
+  swRegistration: null,
+  refreshing: false,
+  lastRefreshAt: null,
+  // Set once data.json has been loaded and the controls have been bound.
+  activated: false,
 };
 
 /* ---------------------------------------------------------------- utilities */
@@ -71,12 +78,25 @@ function quarterOf(value) {
 }
 
 function money(value, digits = 2) {
-  return value.toLocaleString(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
+  // narrowSymbol keeps this as "$1,234.56" in every locale. The default
+  // currencyDisplay disambiguates, rendering USD as "US$1,234.56" for anyone
+  // whose phone is not set to en-US - two characters of pure noise in the
+  // narrowest column of the folded phone layout. Older engines reject the
+  // option outright, hence the fallback.
+  try {
+    return value.toLocaleString(undefined, {
+      style: 'currency',
+      currency: 'USD',
+      currencyDisplay: 'narrowSymbol',
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+  } catch (err) {
+    return '$' + value.toLocaleString(undefined, {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+  }
 }
 
 function perShare(value) {
@@ -731,9 +751,17 @@ function renderTable(rows) {
       // Narrow screens hide the per-share and shares columns, so the amount
       // cell has to carry the breakdown itself - otherwise anyone who hasn't
       // entered share counts sees a column of em dashes and nothing else.
+      //
+      // Two lines, not one: a table column is sized from its widest unbreakable
+      // run, so "$0.9100 × 7,885.97 sh" on a single line dragged the column
+      // ~27px wider than the phone had to give and pushed the dollar figure off
+      // the right edge. Splitting it halves the column's appetite and still
+      // reads top-to-bottom as a multiplication.
       const amountAlt = row.dollars != null
-        ? `${perShare(row.amount)} × ${shareText(row.shares)} sh`
-        : `${perShare(row.amount)} / share`;
+        ? `<span class="alt-line">${perShare(row.amount)}</span> `
+          + `<span class="alt-line">× ${shareText(row.shares)} sh</span>`
+        : `<span class="alt-line">${perShare(row.amount)}</span> `
+          + '<span class="alt-line">per share</span>';
 
       return `<tr class="dist-row ${row.status}${quarter ? ' q' + quarter.index : ''}${idx === nextIdx ? ' next-up' : ''}">
         <td class="c-sym"><span class="sym">${row.symbol}</span><span class="status-mini ${row.status}">${row.status}</span><span class="kind">${KIND_LABEL[row.kind] || row.kind}</span></td>
@@ -938,6 +966,19 @@ function setStatus(message, kind) {
   el.hidden = !message;
 }
 
+/**
+ * Guards every worker-backed action.
+ *
+ * Returning silently — which the SnapTrade and disconnect paths both used to do
+ * — makes the button look broken rather than unconfigured. Say why instead.
+ */
+function requireWorker(what) {
+  if (WORKER_BASE) return true;
+  setStatus(`${what} needs the Cloudflare Worker, and none is configured. `
+    + 'Deploy worker/ and set WORKER_BASE in docs/config.js.', 'error');
+  return false;
+}
+
 /* ------------------------------------------------------------ federated sync
  *
  * "Sync from bank" pulls share counts through the Cloudflare Worker in
@@ -1029,10 +1070,7 @@ function applyHoldings(holdings, source) {
 }
 
 async function syncFromBank() {
-  if (!WORKER_BASE) {
-    setStatus('No Plaid Worker is configured. Set WORKER_BASE in docs/config.js after deploying the worker.', 'error');
-    return;
-  }
+  if (!requireWorker('Bank sync')) return;
   const button = document.getElementById('sync-bank');
   const original = button ? button.innerHTML : '';
   const restore = () => {
@@ -1125,7 +1163,7 @@ async function syncFromBank() {
 }
 
 async function disconnectBank() {
-  if (!WORKER_BASE) return;
+  if (!requireWorker('Disconnecting')) return;
   const key = getSyncKey(true);
   if (!key) return;
   if (!window.confirm('Disconnect the saved bank connection?\n\nHoldings already on this device are kept. Reconnecting later uses another of the 10 Plaid Trial slots.')) return;
@@ -1154,7 +1192,7 @@ async function disconnectBank() {
  * token for this page or the worker to hold. */
 
 async function syncFromSnaptrade() {
-  if (!WORKER_BASE) return;
+  if (!requireWorker('SnapTrade sync')) return;
   const button = document.getElementById('sync-snaptrade');
   const original = button ? button.innerHTML : '';
   const restore = () => {
@@ -1209,9 +1247,225 @@ async function syncFromSnaptrade() {
 
 /* ---------------------------------------------------------------------- init */
 
+/* Fetches data.json, bypassing every cache between here and the server. */
+async function loadData() {
+  const response = await fetch('data.json?t=' + Date.now(), { cache: 'no-store' });
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  return response.json();
+}
+
+/*
+ * Re-renders everything that depends on data.json. Binds nothing, so it is safe
+ * to call on every refresh - which is the whole point of keeping it separate
+ * from init().
+ */
+function applyData() {
+  // Re-read the date, not just the data. An installed app now stays open for
+  // days and re-renders on every foreground, and every date comparison in
+  // render() - what counts as "upcoming", the next-up highlight, the trailing
+  // and forward 12-month windows, the DRIP cut-off - is made against
+  // state.today. Left at its load-time value, an app open across midnight
+  // would pull fresh figures and then file yesterday under "upcoming".
+  state.today = startOfToday();
+  renderMeta();
+  renderStaleness();
+  renderHoldingsInputs();
+  renderNotes();
+  render();
+}
+
+/* Midnight today, honouring the test clock so fixtures stay deterministic. */
+function startOfToday() {
+  const now = state.nowOverride instanceof Date ? new Date(state.nowOverride) : new Date();
+  now.setHours(0, 0, 0, 0);
+  return now;
+}
+
+/* ------------------------------------------------------ staying up to date
+ *
+ * An installed app has no address bar and no reload button, so without the
+ * three mechanisms below the only way to pick up a new build is to force-quit
+ * it. They are:
+ *
+ *   1. the service worker registers with updateViaCache: 'none' and is asked to
+ *      re-check on load and on every foreground, so a new sw.js is noticed;
+ *   2. sw.js calls skipWaiting(), so a new version claims this page at once,
+ *      and controllerchange then reloads it exactly once;
+ *   3. a pull-to-refresh gesture, for when the user wants to force the issue.
+ *
+ * sw.js is also network-first now, so even without any of this a plain reload
+ * gets the current files rather than whatever was cached on install day.
+ */
+
+const AUTO_REFRESH_MIN_GAP_MS = 60 * 1000;
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
+
+  // On a first-ever visit there is no controller yet, and the new worker
+  // claiming the page is not a version change - reloading for that would be a
+  // pointless flash on every fresh install.
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    location.reload();
+  });
+
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+    .then((registration) => {
+      state.swRegistration = registration;
+      registration.update().catch(() => { /* offline */ });
+    })
+    .catch(() => { /* the offline cache is optional */ });
+}
+
+/*
+ * Quietly pulls fresh figures when the app comes back to the foreground.
+ * Rate-limited because switching apps is a far more frequent event than the
+ * once-a-day build it is looking for.
+ */
+function autoRefresh() {
+  const now = Date.now();
+  if (state.refreshing) return;
+  if (state.lastRefreshAt && now - state.lastRefreshAt < AUTO_REFRESH_MIN_GAP_MS) return;
+  if (state.swRegistration) state.swRegistration.update().catch(() => {});
+  refreshNow({ quiet: true });
+}
+
+/*
+ * Re-fetches data.json and re-renders. Also asks the service worker to look for
+ * a new build: the two reasons to pull down are "are these figures current" and
+ * "did the app itself change", and the user cannot be expected to distinguish.
+ */
+async function refreshNow(options) {
+  const quiet = !!(options && options.quiet);
+  if (state.refreshing) return;
+  state.refreshing = true;
+
+  const indicator = document.getElementById('pull-indicator');
+  const label = indicator && indicator.querySelector('.pull-text');
+  const say = (text) => { if (label && !quiet) label.textContent = text; };
+  const collapse = (delay) => {
+    if (!indicator || quiet) return;
+    window.setTimeout(() => { indicator.style.height = '0px'; }, delay);
+  };
+
+  say('Refreshing…');
+  try {
+    if (state.swRegistration) state.swRegistration.update().catch(() => {});
+    state.data = await loadData();
+    state.lastRefreshAt = Date.now();
+    // If the very first load failed, this is the moment the page becomes
+    // usable: finish the wiring before rendering, or the table appears with
+    // dead controls.
+    activate();
+    applyData();
+    say('Up to date');
+    collapse(600);
+  } catch (err) {
+    // Leave the previous figures on screen rather than blanking the page; the
+    // staleness banner is what tells the user they are looking at old numbers.
+    say('Could not refresh');
+    renderStaleness();
+    collapse(1500);
+  } finally {
+    state.refreshing = false;
+  }
+}
+
+/* How far the indicator travels, and how far it must travel to fire. */
+const PULL_TRIGGER_PX = 64;
+const PULL_MAX_PX = 96;
+/*
+ * How far a finger must move before the gesture commits to being a pull. Below
+ * this the direction is not yet knowable, and guessing wrong steals the touch
+ * from something else.
+ */
+const PULL_SLOP_PX = 10;
+
+function setupPullToRefresh() {
+  const indicator = document.getElementById('pull-indicator');
+  const label = indicator && indicator.querySelector('.pull-text');
+  if (!indicator || !label) return;
+
+  // Bound everywhere rather than only in an installed app. Where the platform
+  // has its own pull-to-refresh, `overscroll-behavior-y: contain` plus the
+  // preventDefault below suppress it, so there is one gesture with one
+  // behaviour instead of two that differ depending on how the page was opened.
+  let startY = null;
+  let startX = null;
+  let pulled = 0;
+  // A touch that began at the top of the page, direction not yet decided.
+  let tracking = false;
+  // ...and one that has since proved to be a downward pull.
+  let claimed = false;
+
+  const release = () => {
+    tracking = false;
+    claimed = false;
+    startY = null;
+    startX = null;
+    pulled = 0;
+    indicator.style.height = '0px';
+  };
+
+  document.addEventListener('touchstart', (event) => {
+    if (state.refreshing || event.touches.length !== 1 || window.scrollY > 0) return;
+    startY = event.touches[0].clientY;
+    startX = event.touches[0].clientX;
+    pulled = 0;
+    tracking = true;
+    claimed = false;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (event) => {
+    if (!tracking) return;
+    // A second finger means a pinch or a zoom, not a pull.
+    if (event.touches.length !== 1) { release(); return; }
+
+    const dy = event.touches[0].clientY - startY;
+    const dx = event.touches[0].clientX - startX;
+
+    if (!claimed) {
+      // Say nothing until the finger has moved far enough to have an obvious
+      // direction. preventDefault on the first touchmove of a gesture cancels
+      // scrolling for the whole gesture, so claiming early on a stray pixel of
+      // downward drift makes the table impossible to pan sideways - and it is
+      // genuinely side-scrollable in landscape, above the fold breakpoint.
+      if (Math.abs(dy) < PULL_SLOP_PX && Math.abs(dx) < PULL_SLOP_PX) return;
+      if (dy <= 0 || Math.abs(dx) >= dy) { release(); return; }
+      claimed = true;
+    }
+
+    if (window.scrollY > 0) { release(); return; }
+    // Damped, so it feels like pulling against a spring instead of dragging a
+    // sheet: the finger travels twice as far as the indicator. The slop is
+    // subtracted so the indicator opens from zero rather than jumping.
+    pulled = Math.min(PULL_MAX_PX, (dy - PULL_SLOP_PX) * 0.5);
+    indicator.style.height = pulled + 'px';
+    label.textContent = pulled >= PULL_TRIGGER_PX ? 'Release to refresh' : 'Pull to refresh';
+    event.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchend', () => {
+    if (!tracking) return;
+    const fire = claimed && pulled >= PULL_TRIGGER_PX;
+    tracking = false;
+    claimed = false;
+    startY = null;
+    startX = null;
+    if (!fire) { release(); return; }
+    indicator.style.height = PULL_TRIGGER_PX + 'px';
+    refreshNow();
+  }, { passive: true });
+
+  document.addEventListener('touchcancel', release, { passive: true });
+}
+
 async function init() {
-  state.today = new Date();
-  state.today.setHours(0, 0, 0, 0);
+  state.today = startOfToday();
   state.holdings = load(HOLDINGS_KEY, {});
   state.prefs = load(PREFS_KEY, state.prefs);
   state.syncMeta = load(SYNC_META_KEY, { at: null, source: null });
@@ -1241,33 +1495,22 @@ async function init() {
 
   renderSyncPill();
 
-  try {
-    const response = await fetch('data.json?t=' + Date.now(), { cache: 'no-cache' });
-    if (!response.ok) throw new Error('HTTP ' + response.status);
-    state.data = await response.json();
-  } catch (err) {
-    document.getElementById('meta').textContent =
-      'Could not load data.json (' + err.message + '). If offline, a cached copy may load shortly.';
-    // A failed fetch is exactly when a staleness warning matters most: the
-    // service worker may serve an old cached copy and look perfectly normal.
-    renderStaleness();
-    return;
-  }
-
-  document.getElementById('hide-projected').checked = !!state.prefs.hideProjected;
-  document.getElementById('drip-toggle').checked = !!state.prefs.drip;
-  document.querySelectorAll('.segmented button').forEach((button) => {
-    button.classList.toggle('active', button.dataset.range === state.prefs.range);
-  });
-
-  renderMeta();
-  renderStaleness();
-  renderHoldingsInputs();
+  // Everything that can recover from a failed first load has to be wired up
+  // *before* that load is attempted. A first visit that fails - offline, or a
+  // bad deploy - is precisely when the user needs a way to retry, and leaving
+  // these until afterwards left them staring at an error with no gesture, no
+  // foreground refresh and no offline cache: the very dead end this is meant
+  // to remove.
+  registerServiceWorker();
+  setupPullToRefresh();
 
   // An installed PWA is resumed far more often than it is loaded. Re-check on
-  // resume so a session left open for days doesn't sit on a load-time verdict.
+  // resume so a session left open for days doesn't sit on a load-time verdict,
+  // and quietly pick up both new figures and a new build while we are at it.
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) renderStaleness();
+    if (document.hidden) return;
+    renderStaleness();
+    autoRefresh();
   });
 
   // Rotating the phone crosses the breakpoint, and the footer's colspan is
@@ -1275,13 +1518,37 @@ async function init() {
   if (typeof window.matchMedia === 'function') {
     window.matchMedia(COMPACT_QUERY).addEventListener('change', () => render());
   }
-  renderNotes();
-  bindEvents();
-  render();
 
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js').catch(() => { /* offline cache is optional */ });
+  try {
+    state.data = await loadData();
+  } catch (err) {
+    document.getElementById('meta').textContent =
+      'Could not load data.json (' + err.message + '). Pull down to retry.';
+    // A failed fetch is exactly when a staleness warning matters most: the
+    // service worker may serve an old cached copy and look perfectly normal.
+    renderStaleness();
+    return;
   }
+
+  activate();
+  applyData();
+}
+
+/*
+ * The one-time setup that needs data.json in hand. Split out of init() so that
+ * a refresh which succeeds after a failed first load still finishes wiring the
+ * page up, rather than rendering a table whose controls do nothing.
+ */
+function activate() {
+  if (state.activated) return;
+  state.activated = true;
+
+  document.getElementById('hide-projected').checked = !!state.prefs.hideProjected;
+  document.getElementById('drip-toggle').checked = !!state.prefs.drip;
+  document.querySelectorAll('.segmented button').forEach((button) => {
+    button.classList.toggle('active', button.dataset.range === state.prefs.range);
+  });
+  bindEvents();
 }
 
 if (typeof document !== 'undefined') {

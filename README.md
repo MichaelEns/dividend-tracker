@@ -24,6 +24,8 @@ browser's localStorage.
 - CSV import fallback for anyone who doesn't want to run the worker.
 - Distributions colour-coded by quarter, and a table that folds to three
   columns in portrait so dates and dollar amounts stay side by side.
+- Pull down to refresh, which also checks for a new build — see
+  [Staying up to date](#staying-up-to-date).
 - Staleness warnings that call out a stalled daily build or stale share counts,
   because a broken build renders identically to a healthy one.
 
@@ -287,6 +289,36 @@ moved backwards in time.
 The clock is read on every render, and the banner re-renders when a hidden tab
 becomes visible again — an installed PWA is resumed far more often than it is
 loaded, so a load-time verdict would go stale along with the data.
+
+## Staying up to date
+
+An installed PWA has no address bar and no reload button. Combined with a
+cache-first service worker that meant the only way to pick up a new build was to
+force-quit the app — and twice, shipped features sat on the server for days
+without ever reaching the phone. Four things now prevent that:
+
+1. **`docs/sw.js` is network-first**, not cache-first. The cache is a fallback
+   for when the network is absent or slower than `NETWORK_TIMEOUT_MS` (3.5 s),
+   not the primary source. A plain reload always gets the current files. This
+   costs a little warm-start latency and buys correctness of what is on screen,
+   which on an app about money is the better trade.
+2. **The worker is registered with `updateViaCache: 'none'`** and asked to
+   re-check on load, so the browser cannot serve a stale `sw.js` from its own
+   HTTP cache for up to 24 hours.
+3. **`skipWaiting()` + a one-shot reload on `controllerchange`.** A new version
+   claims the page immediately and the page reloads itself once — guarded so
+   that the *first* install, where there was no previous controller, doesn't
+   cause a pointless flash.
+4. **Pull down to refresh.** Re-fetches `data.json` and asks the worker to look
+   for a new build at the same time; the two reasons to pull are "are these
+   figures current" and "did the app change", and no user should have to tell
+   them apart. Returning to the foreground does the same thing quietly, at most
+   once a minute.
+
+The gesture is bound in tabs as well as installed apps. `overscroll-behavior-y:
+contain` plus `preventDefault()` on the drag suppress the platform's own
+pull-to-refresh, so there is one gesture with one behaviour rather than two that
+differ depending on how the page was opened.
 
 ## Alternative sync provider: SnapTrade
 

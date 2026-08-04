@@ -403,7 +403,105 @@ async function main() {
     });
     const nh = JSON.parse(noHoldings.result.value);
     assert.strictEqual(nh.dashHidden, 'none', 'the em dash should not occupy the portrait cell');
-    assert.match(nh.alt, /\/ share$/, 'expected a per-share fallback, got: ' + nh.alt);
+    assert.match(nh.alt, /per share$/, 'expected a per-share fallback, got: ' + nh.alt);
+
+    // The reported bug: at 390px with real six-figure share counts the amount
+    // column was dragged wide enough to push the dollar figure off the screen.
+    // 320px is the narrowest phone still in use, so check the whole range
+    // rather than the one width that happened to be measured.
+    const widths = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        state.holdings = { MSFT: 7885.97, FXAIX: 5242.39, FSKAX: 7057.42 };
+        render();
+        return 'seeded';
+      })()`,
+      returnByValue: true,
+    });
+    assert.strictEqual(widths.result.value, 'seeded');
+
+    for (const width of [320, 360, 390, 430]) {
+      await rpc(ws, id++, 'Emulation.setDeviceMetricsOverride', {
+        width, height: 844, deviceScaleFactor: 0, mobile: true,
+      });
+      await new Promise((r) => setTimeout(r, 350));
+      const fit = await rpc(ws, id++, 'Runtime.evaluate', {
+        expression: `(() => {
+          const wrap = document.querySelector('.table-wrap');
+          const row = document.querySelector('#dist-body tr.dist-row');
+          const cell = row.querySelector('.c-amt');
+          const spans = [...row.querySelectorAll('.amt-alt .alt-line')];
+          const tops = spans.map((s) => Math.round(s.getBoundingClientRect().top));
+          return JSON.stringify({
+            tableOverflow: wrap.scrollWidth - wrap.clientWidth,
+            docOverflow: document.documentElement.scrollWidth - window.innerWidth,
+            cellOverflow: cell.scrollWidth - cell.clientWidth,
+            // Distinct tops means genuinely stacked, not merely two elements
+            // that happen to exist in the markup at every width.
+            stacked: tops.length === 2 && tops[0] !== tops[1],
+            tops,
+          });
+        })()`,
+        returnByValue: true,
+      });
+      const f = JSON.parse(fit.result.value);
+      assert.strictEqual(f.tableOverflow, 0, `table scrolls sideways at ${width}px`);
+      assert.strictEqual(f.docOverflow, 0, `page scrolls sideways at ${width}px`);
+      assert.strictEqual(f.cellOverflow, 0, `amount spills out of its cell at ${width}px`);
+      assert.ok(f.stacked,
+        `the per-share breakdown is not on two lines at ${width}px, tops: ${f.tops}`);
+    }
+    console.log('portrait fit: no overflow at 320/360/390/430px, breakdown on two lines');
+
+    // Amounts must read "$7,176.23" everywhere. The default currency format
+    // disambiguates USD as "US$" on any non-en-US locale, which is what the
+    // phone was actually showing and cost two characters in the tightest
+    // column on the page.
+    await rpc(ws, id++, 'Emulation.setLocaleOverride', { locale: 'en-GB' });
+    const localised = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        render();
+        const row = document.querySelector('#dist-body tr.dist-row');
+        return JSON.stringify({
+          amount: row.querySelector('.amt').textContent,
+          footer: document.querySelector('#dist-table tfoot .c-amt').textContent,
+        });
+      })()`,
+      returnByValue: true,
+    });
+    const loc = JSON.parse(localised.result.value);
+    assert.ok(!/US\$/.test(loc.amount), 'amount carries a US$ prefix on en-GB: ' + loc.amount);
+    assert.ok(!/US\$/.test(loc.footer), 'footer carries a US$ prefix on en-GB: ' + loc.footer);
+    assert.match(loc.amount, /^\$/, 'amount should start with a bare $: ' + loc.amount);
+    await rpc(ws, id++, 'Emulation.setLocaleOverride', {});
+    console.log('currency: bare $ even on a non-US locale');
+
+    // The three worker-backed buttons carry the `hidden` attribute, but
+    // `.primary { display: inline-flex }` outranked the UA rule that acts on
+    // it, so they were offered on a site with no worker deployed - and the
+    // SnapTrade one then returned silently, looking simply broken.
+    const guards = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        const show = (id) => getComputedStyle(document.getElementById(id)).display;
+        document.getElementById('holdings-body').hidden = false;
+        const before = { plaid: show('sync-bank'), snap: show('sync-snaptrade'), disc: show('disconnect-bank') };
+        // Force one visible and click it: with no worker configured it must say
+        // so rather than do nothing at all.
+        const btn = document.getElementById('sync-snaptrade');
+        btn.hidden = false;
+        btn.click();
+        const status = document.getElementById('sync-status');
+        return JSON.stringify({ before, statusHidden: status.hidden, statusText: status.textContent });
+      })()`,
+      returnByValue: true,
+    });
+    const g = JSON.parse(guards.result.value);
+    assert.strictEqual(g.before.plaid, 'none', 'the Plaid button is visible with no worker configured');
+    assert.strictEqual(g.before.snap, 'none', 'the SnapTrade button is visible with no worker configured');
+    assert.strictEqual(g.before.disc, 'none', 'the disconnect button is visible with no connection');
+    assert.strictEqual(g.statusHidden, false, 'SnapTrade did nothing at all when tapped');
+    assert.match(g.statusText, /WORKER_BASE/,
+      'SnapTrade should explain that no worker is configured, said: ' + g.statusText);
+    console.log('sync buttons: hidden without a worker, and explain themselves when shown');
 
     // Crossing the breakpoint while nothing matches the filters used to leave
     // the old footer behind, still summarising rows that are gone and still
@@ -470,6 +568,121 @@ async function main() {
       'table scrolls sideways again after refilling in portrait');
     await rpc(ws, id++, 'Emulation.clearDeviceMetricsOverride', {});
 
+    // Pull to refresh. An installed app has no reload button, so this gesture
+    // and the service-worker update it triggers are the only way to pick up a
+    // new build without force-quitting.
+    await rpc(ws, id++, 'Emulation.setDeviceMetricsOverride', {
+      width: 390, height: 844, deviceScaleFactor: 0, mobile: true,
+    });
+    await rpc(ws, id++, 'Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: 'window.scrollTo(0, 0); state.lastRefreshAt = null;',
+    });
+    await new Promise((r) => setTimeout(r, 250));
+
+    const touch = (type, y, x = 195) => rpc(ws, id++, 'Input.dispatchTouchEvent', {
+      type,
+      touchPoints: type === 'touchEnd' ? [] : [{ x, y }],
+    });
+
+    // Record whether the app cancelled each touchmove. This has to be a bubble
+    // listener on window - the last thing in the propagation path - because the
+    // app's own handler is a bubble listener on document; a capture listener
+    // would run first and always see defaultPrevented === false.
+    await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        window.__prevented = [];
+        window.addEventListener('touchmove', (e) => window.__prevented.push(e.defaultPrevented));
+      })()`,
+    });
+
+    // A short drag must not fire: an accidental brush should not reload.
+    await touch('touchStart', 80);
+    await touch('touchMove', 100);
+    await new Promise((r) => setTimeout(r, 80));
+    await touch('touchEnd', 100);
+    await new Promise((r) => setTimeout(r, 400));
+    const short = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: 'JSON.stringify({ last: state.lastRefreshAt })',
+      returnByValue: true,
+    });
+    assert.strictEqual(JSON.parse(short.result.value).last, null,
+      'a 20px drag should be treated as a scroll, not a refresh');
+
+    // A full drag opens the indicator, arms it, and reloads on release.
+    await rpc(ws, id++, 'Runtime.evaluate', { expression: 'window.__prevented = [];' });
+    await touch('touchStart', 80);
+    let armed = null;
+    for (const y of [110, 150, 190, 230, 260]) {
+      await touch('touchMove', y);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    armed = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `JSON.stringify({
+        height: document.getElementById('pull-indicator').style.height,
+        label: document.querySelector('.pull-text').textContent,
+        prevented: window.__prevented,
+      })`,
+      returnByValue: true,
+    });
+    const a = JSON.parse(armed.result.value);
+    assert.ok(Number.parseFloat(a.height) > 0, 'the pull indicator never opened');
+    assert.match(a.label, /Release/, 'the gesture never armed, label said: ' + a.label);
+    // Proves the observer below can actually see a cancelled move, so the
+    // horizontal assertion is not passing for want of a working listener.
+    assert.ok(a.prevented.some(Boolean),
+      'a downward pull did not cancel the native scroll, so the page fights the gesture');
+
+    await touch('touchEnd', 260);
+    await new Promise((r) => setTimeout(r, 2500));
+    const pulled = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `JSON.stringify({
+        last: state.lastRefreshAt,
+        label: document.querySelector('.pull-text').textContent,
+        height: document.getElementById('pull-indicator').style.height,
+        rows: document.querySelectorAll('#dist-body tr.dist-row').length,
+        meta: document.getElementById('meta').textContent,
+      })`,
+      returnByValue: true,
+    });
+    const pr = JSON.parse(pulled.result.value);
+    assert.ok(pr.last, 'releasing a full pull did not refresh');
+    assert.strictEqual(pr.height, '0px', 'the indicator stayed open after refreshing');
+    assert.ok(pr.rows > 0, 'the table was emptied by a refresh');
+    assert.ok(/refreshed/i.test(pr.meta), 'meta line lost after refresh: ' + pr.meta);
+
+    // A horizontal swipe must reach the table, not the refresh gesture. Above
+    // the fold breakpoint - an iPhone in landscape is 844px wide - the table is
+    // genuinely side-scrollable, and preventDefault on the first touchmove of a
+    // gesture kills scrolling for the whole gesture.
+    await rpc(ws, id++, 'Emulation.setDeviceMetricsOverride', {
+      width: 700, height: 500, deviceScaleFactor: 0, mobile: true,
+    });
+    await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: 'window.scrollTo(0, 0); state.lastRefreshAt = null; window.__prevented = [];',
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    await touch('touchStart', 400, 350);
+    await touch('touchMove', 403, 300);
+    await touch('touchMove', 404, 260);
+    await new Promise((r) => setTimeout(r, 80));
+    const sideways = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `JSON.stringify({
+        prevented: window.__prevented,
+        height: document.getElementById('pull-indicator').style.height,
+      })`,
+      returnByValue: true,
+    });
+    await touch('touchEnd', 404, 260);
+    const sw2 = JSON.parse(sideways.result.value);
+    assert.ok(!sw2.prevented.some(Boolean),
+      'a sideways swipe was swallowed by pull-to-refresh, so the table cannot be panned');
+    assert.ok(!Number.parseFloat(sw2.height),
+      'the pull indicator opened on a horizontal swipe: ' + sw2.height);
+
+    await rpc(ws, id++, 'Emulation.setTouchEmulationEnabled', { enabled: false });
+    await rpc(ws, id++, 'Emulation.clearDeviceMetricsOverride', {});
+
     console.log('\nfilters: history=' + hist.paid + ' paid rows, confirmed-only='
       + confirmed.total + ' rows, chip filter OK');
     console.log('csv import: ' + imported.status);
@@ -477,6 +690,8 @@ async function main() {
     console.log('quarters: ' + q.rows + ' rows in ' + q.runs + ' contiguous bands, all labelled');
     console.log('portrait 390px: date + amount side by side, no horizontal scroll');
     console.log('footer: cleared when empty, colspan follows the layout');
+    console.log('pull to refresh: ignores a short drag, reloads on a full one,');
+    console.log('                and lets a sideways swipe pan the table');
     console.log('\nSMOKE TEST PASSED');
   } finally {
     if (ws) ws.close();
