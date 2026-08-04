@@ -4,8 +4,12 @@
  * Shell assets are cache-first so the page opens instantly. data.json is
  * network-first with a cache fallback, so a phone with no signal still shows the
  * most recently downloaded figures rather than an error.
+ *
+ * Bump CACHE whenever a shell asset changes. Cache-first means an installed PWA
+ * would otherwise keep serving the old app.js indefinitely — which would have
+ * quietly suppressed the staleness warnings this version adds.
  */
-const CACHE = 'divtracker-v2';
+const CACHE = 'divtracker-v3';
 const SHELL = [
   './',
   './index.html',

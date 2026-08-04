@@ -22,6 +22,8 @@ browser's localStorage.
   interpolates **green → red over one quarter** (92 days) so you know when to
   refresh.
 - CSV import fallback for anyone who doesn't want to run the worker.
+- Staleness warnings that call out a stalled daily build or stale share counts,
+  because a broken build renders identically to a healthy one.
 
 ## Repo layout
 
@@ -180,6 +182,62 @@ The pill next to "Last updated" starts at day 0 = green
 dividends in this tracker — so a red pill means it's plausible your share count
 is now stale.
 
+### Staleness warnings
+
+The pill above answers "how old are my share counts?" It does not cover the
+failure that actually misleads you: **`data.json` going stale**.
+
+Share counts are typed in by hand, so their age is self-evident. `data.json` is
+rebuilt by a scheduled GitHub Action, so when that breaks — an expired token, a
+Yahoo schema change, a workflow error — the page keeps rendering confident,
+plausible, wrong numbers with no visible difference. Prices and "next payment"
+dates simply stop advancing. A silent failure deserves a loud warning, so a
+banner appears above the summary cards when anything is overdue.
+
+Staleness is judged as a **ratio of age to the cadence that source is expected
+to keep**, not as an absolute age. That lets one classifier cover both an
+hour-scale source and a quarter-scale one:
+
+| Ratio (age ÷ expected cadence) | Level      | Shown? |
+| ------------------------------ | ---------- | ------ |
+| < 0.5                          | `fresh`    | no     |
+| 0.5 – 1                        | `aging`    | no     |
+| 1 – 3                          | `stale`    | amber  |
+| ≥ 3                            | `critical` | red    |
+| no timestamp / unparseable     | `broken`   | red    |
+
+Expected cadences: `data.json` = 24 h (the workflow's daily cron); holdings =
+92 days (one dividend quarter). So a three-day-old build is `critical` while
+three-day-old share counts are still `fresh` — the same age, correctly judged
+differently.
+
+Two details worth knowing:
+
+- **Future timestamps are clamped to zero age**, not treated as extremely
+  fresh. Clock skew between your device and the build runner shouldn't be able
+  to suppress a warning.
+- **A failed `data.json` fetch still renders the banner.** That is precisely
+  when it matters most, because the service worker may serve an old cached copy
+  that looks perfectly normal.
+
+A `generatedAt` that is *present but unreadable* is reported as `broken`, not
+treated as missing. A missing timestamp and an unparseable one are easy to
+conflate in code, and conflating them means a format change in `build.py` would
+render as perfectly healthy — the exact failure this feature exists to catch.
+
+Share counts are judged on the **most recent** sync source, not each source
+individually. `docs/app.js` merges every source into one flat symbol → shares
+map, so there is no per-institution partition to age separately; warning about a
+CSV imported once in March would be a permanent false positive when the numbers
+on screen were typed in an hour ago. Every source is still recorded in
+`divtracker.syncSources.v1` so the banner can name which one, and the legacy
+single-source `divtracker.syncMeta.v1` is migrated in on first load and never
+moved backwards in time.
+
+The clock is read on every render, and the banner re-renders when a hidden tab
+becomes visible again — an installed PWA is resumed far more often than it is
+loaded, so a load-time verdict would go stale along with the data.
+
 ## Alternative sync provider: SnapTrade
 
 SnapTrade is supported alongside Plaid. Configure either, or both.
@@ -249,10 +307,11 @@ python -m unittest discover -s tests -v     # projection engine + pipeline
 node --test tests/csv.test.cjs              # brokerage CSV import
 node --test tests/worker.test.mjs           # Plaid worker auth + origin checks + aggregation
 node --test tests/snaptrade.test.mjs        # SnapTrade request signing + position parsing
+node --test tests/freshness.test.cjs       # staleness classification + syncMeta migration
 ```
 
 There is also an end-to-end smoke test that loads the real page in headless Edge
-and asserts the table, filters and dollar maths:
+and asserts the table, filters, dollar maths and the staleness banner:
 
 ```powershell
 cd docs; Start-Process python -ArgumentList '-m','http.server','8765'
@@ -261,9 +320,9 @@ cd ..; node tests\smoke.cjs "C:\Program Files (x86)\Microsoft\Edge\Application\m
 
 ## Privacy
 
-- Share counts, sync source, and last-synced timestamp are stored **only** in
-  your browser's localStorage (`divtracker.*.v1` keys). Use "Clear" in the
-  Your holdings panel to wipe them.
+- Share counts, sync source, per-source freshness records, and last-synced
+  timestamp are stored **only** in your browser's localStorage
+  (`divtracker.*.v1` keys). Use "Clear" in the Your holdings panel to wipe them.
 - The Cloudflare Worker stores one Plaid access token in your own Cloudflare KV
   so repeat syncs stay free. It is never sent to the browser, every endpoint
   that can read it requires `SYNC_PASSPHRASE`, and **Disconnect bank** deletes

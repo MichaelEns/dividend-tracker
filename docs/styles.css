@@ -13,6 +13,12 @@
   --projected: #5a4bb8;
   --projected-bg: #ecebfb;
   --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .1);
+  --warn: #9a5b00;
+  --warn-bg: #fdf0dc;
+  --warn-border: #e6b871;
+  --bad: #9f1e1e;
+  --bad-bg: #fdeaea;
+  --bad-border: #e59a9a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +36,12 @@
     --projected: #b9b0ff;
     --projected-bg: #241f45;
     --shadow: none;
+    --warn: #f4c470;
+    --warn-bg: #3a2c12;
+    --warn-border: #6b5320;
+    --bad: #ff9f9f;
+    --bad-bg: #401b1b;
+    --bad-border: #7a3232;
   }
 }
 
@@ -68,6 +80,30 @@ main { max-width: 1040px; margin: 0 auto; padding: 12px 16px 48px; }
 }
 
 .section-title { margin: 0 0 10px; font-size: .95rem; }
+
+/* Staleness banner. Loud on purpose: a stale build renders identically to a
+   healthy one, so nothing but an explicit warning distinguishes them. */
+.staleness {
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  font-size: .88rem;
+  border: 1px solid var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.staleness strong { display: block; margin-bottom: 6px; font-size: .92rem; }
+.staleness ul { margin: 0; padding-left: 18px; }
+.staleness li + li { margin-top: 4px; }
+.staleness .staleness-title { font-weight: 600; }
+
+.staleness.critical,
+.staleness.broken {
+  border-color: var(--bad-border);
+  background: var(--bad-bg);
+  color: var(--bad);
+}
 
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .card { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }

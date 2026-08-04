@@ -218,9 +218,60 @@ async function main() {
     assert.strictEqual(imported.msftShares, '20', 'input did not refresh after import');
     assert.match(imported.status, /Imported 2 position/, 'import status not shown: ' + imported.status);
 
+    // The staleness banner is the one piece of UI that exists to be absent
+    // most of the time, so check both halves: silent when the build is
+    // current, loud when it is not.
+    const staleness = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        const box = document.getElementById('staleness');
+        const pad = (n) => String(n).padStart(2, '0');
+        const stamp = (d) => pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + '/' + d.getFullYear()
+          + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':00';
+        const real = state.data.generatedAt;
+
+        // Pin a known-fresh build rather than trusting the checked-in
+        // data.json. Otherwise this assertion fails whenever the working copy
+        // is a day old - i.e. exactly when the daily build has broken, adding a
+        // spurious failure on top of the real one.
+        state.data.generatedAt = stamp(new Date(Date.now() - 3600000));
+        renderStaleness();
+        const quiet = { hidden: box.hidden, text: box.textContent };
+
+        state.data.generatedAt = stamp(new Date(Date.now() - 5 * 86400000));
+        renderStaleness();
+        const loud = { hidden: box.hidden, className: box.className, text: box.textContent };
+
+        // A present but unreadable build time must warn, not fall through to
+        // the silent "never updated" state.
+        state.data.generatedAt = 'sometime last Tuesday';
+        renderStaleness();
+        const garbled = { hidden: box.hidden, className: box.className, text: box.textContent };
+
+        state.data.generatedAt = real;
+        renderStaleness();
+        const restored = { hidden: box.hidden };
+
+        return JSON.stringify({ quiet, loud, garbled, restored });
+      })()`,
+      returnByValue: true,
+    });
+    const fresh = JSON.parse(staleness.result.value);
+    assert.strictEqual(fresh.quiet.hidden, true,
+      'banner must stay hidden for a current build, got: ' + fresh.quiet.text);
+    assert.strictEqual(fresh.loud.hidden, false, 'a 5-day-old build must raise a warning');
+    assert.match(fresh.loud.className, /\bcritical\b/,
+      'expected the critical style, got: ' + fresh.loud.className);
+    assert.match(fresh.loud.text, /out of date/i, 'warning text missing: ' + fresh.loud.text);
+    assert.match(fresh.loud.text, /5 days ago/, 'warning should say how old: ' + fresh.loud.text);
+    assert.strictEqual(fresh.garbled.hidden, false, 'an unreadable build time must warn');
+    assert.match(fresh.garbled.text, /unreadable/i,
+      'expected an unreadable-timestamp warning, got: ' + fresh.garbled.text);
+    assert.strictEqual(fresh.restored.hidden, true, 'banner must clear once data is current again');
+
     console.log('\nfilters: history=' + hist.paid + ' paid rows, confirmed-only='
       + confirmed.total + ' rows, chip filter OK');
     console.log('csv import: ' + imported.status);
+    console.log('staleness: quiet when current, warns when stale');
     console.log('\nSMOKE TEST PASSED');
   } finally {
     if (ws) ws.close();

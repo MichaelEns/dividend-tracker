@@ -12,6 +12,7 @@ const HOLDINGS_KEY = 'divtracker.holdings.v1';
 const PREFS_KEY = 'divtracker.prefs.v1';
 const SYNC_META_KEY = 'divtracker.syncMeta.v1';
 const SYNC_KEY_KEY = 'divtracker.syncKey.v1';
+const SYNC_SOURCES_KEY = 'divtracker.syncSources.v1';
 
 const CONFIG = (typeof window !== 'undefined' && window.DIVTRACKER_CONFIG) || {};
 const QUARTER_DAYS = Number(CONFIG.QUARTER_DAYS) > 0 ? Number(CONFIG.QUARTER_DAYS) : 92;
@@ -21,8 +22,12 @@ const state = {
   data: null,
   holdings: {},
   syncMeta: { at: null, source: null },
+  syncSources: {},
   prefs: { range: 'upcoming', hideProjected: false, symbols: [], drip: false },
   today: new Date(),
+  // Test-only clock injection. Production reads the real clock per render, so
+  // a tab left open overnight still crosses a staleness threshold.
+  nowOverride: null,
 };
 
 /* ---------------------------------------------------------------- utilities */
@@ -96,9 +101,276 @@ function describeAge(days) {
   return `${Math.round(days / 30)} months ago`;
 }
 
+/**
+ * Collapses "CSV import — march.csv" to "CSV import" so re-importing a
+ * differently named file updates one record instead of growing the list
+ * forever. The full label is kept for display.
+ */
+function sourceId(source) {
+  const raw = String(source || 'Manual entry').trim();
+  const cut = raw.split('—')[0].trim();
+  return cut || raw;
+}
+
 function markSynced(source) {
   state.syncMeta = { at: new Date().toISOString(), source: source || null };
   save(SYNC_META_KEY, state.syncMeta);
+  recordSource(sourceId(source), source || 'Manual entry', 'sync');
+  renderStaleness();
+}
+
+/* ------------------------------------------------------------- staleness
+ *
+ * The pill above answers "how old are my share counts?" and fades over a
+ * quarter, which suits dividends. It does not cover the failure that actually
+ * misleads you: data.json going stale.
+ *
+ * Share counts are edited by hand, so their age is self-evident. data.json is
+ * refreshed by a scheduled GitHub Action, so when that breaks - an expired
+ * token, a Yahoo schema change, a workflow error - the page keeps rendering
+ * confident, plausible, wrong numbers with no visible difference. Prices and
+ * "next payment" dates simply stop advancing. That is a silent failure, and
+ * silent failures deserve loud warnings.
+ *
+ * One classifier covers both because staleness is judged as a ratio of age to
+ * the cadence that source is *expected* to keep, not as an absolute age. A
+ * day-old holdings entry is fine; a day-old daily build is already suspect. */
+
+const FRESHNESS_ORDER = ['fresh', 'aging', 'stale', 'critical', 'broken', 'never'];
+
+/** Cadence a source is expected to keep, in hours. */
+const DATA_CADENCE_HOURS = 24;      // the workflow's daily cron
+const HOLDINGS_CADENCE_HOURS = QUARTER_DAYS * 24;
+
+/**
+ * Classifies one source. Returns a level plus the numbers behind it so the UI
+ * can explain itself rather than just showing a colour.
+ */
+function classifyFreshness(options) {
+  const opts = options || {};
+  const cadence = Number(opts.cadenceHours) > 0 ? Number(opts.cadenceHours) : DATA_CADENCE_HOURS;
+
+  if (opts.brokenReason) {
+    return { level: 'broken', ageHours: null, ratio: null, reason: String(opts.brokenReason) };
+  }
+  if (!opts.at) {
+    return { level: 'never', ageHours: null, ratio: null, reason: 'never updated' };
+  }
+  const at = opts.at instanceof Date ? opts.at : new Date(opts.at);
+  if (Number.isNaN(at.getTime())) {
+    return { level: 'broken', ageHours: null, ratio: null, reason: 'unreadable timestamp' };
+  }
+
+  const now = opts.now instanceof Date ? opts.now : (opts.now ? new Date(opts.now) : new Date());
+  // Clamp at zero: a clock skew or a future build date is not "very fresh".
+  const ageHours = Math.max(0, (now.getTime() - at.getTime()) / 3600000);
+  const ratio = ageHours / cadence;
+
+  let level;
+  if (ratio < 0.5) level = 'fresh';
+  else if (ratio < 1) level = 'aging';
+  else if (ratio < 3) level = 'stale';
+  else level = 'critical';
+
+  return { level, ageHours, ratio, reason: null };
+}
+
+/** The worst of several levels, for a single summary state. */
+function worstLevel(levels) {
+  let worst = 'fresh';
+  for (const l of levels || []) {
+    if (FRESHNESS_ORDER.indexOf(l) > FRESHNESS_ORDER.indexOf(worst)) worst = l;
+  }
+  return worst;
+}
+
+function isConcerning(level) {
+  return level === 'stale' || level === 'critical' || level === 'broken';
+}
+
+function describeAgeHours(hours) {
+  if (hours == null) return 'unknown';
+  if (hours < 1) return 'just now';
+  if (hours < 2) return 'an hour ago';
+  if (hours < 48) return `${Math.round(hours)} hours ago`;
+  const days = hours / 24;
+  if (days < 14) return `${Math.round(days)} days ago`;
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+  return `${Math.round(days / 30)} months ago`;
+}
+
+/**
+ * Folds the legacy single-source record into the per-source map.
+ *
+ * Existing users already have divtracker.syncMeta.v1 in localStorage; dropping
+ * it would reset their pill to "never" and imply their holdings are unverified
+ * when they are not.
+ */
+function migrateSyncMeta(legacy, existing) {
+  const sources = Object.assign({}, existing || {});
+  if (legacy && legacy.at) {
+    const label = legacy.source || 'Previous sync';
+    const id = sourceId(label);
+    const legacyTime = new Date(legacy.at).getTime();
+    if (!Number.isNaN(legacyTime)) {
+      const prior = sources[id] ? new Date(sources[id].at).getTime() : NaN;
+      // Never move a source backwards in time. An unparseable prior timestamp
+      // counts as no timestamp, so the legacy value wins rather than losing to
+      // a comparison that silently returns false.
+      if (Number.isNaN(prior) || prior < legacyTime) {
+        sources[id] = { at: legacy.at, label, via: 'legacy' };
+      }
+    }
+  }
+  return sources;
+}
+
+function recordSource(id, label, via) {
+  if (!id) return;
+  state.syncSources = state.syncSources || {};
+  state.syncSources[id] = {
+    at: new Date().toISOString(),
+    label: label || id,
+    via: via || 'manual',
+  };
+  save(SYNC_SOURCES_KEY, state.syncSources);
+}
+
+/**
+ * The most recently updated source, or null.
+ *
+ * Holdings are stored as one flat symbol -> shares map: `applyHoldings` merges
+ * every source into it, so there is no per-institution partition to age
+ * separately. Judging each historical source on its own would therefore warn
+ * about a CSV imported once in March even though the numbers on screen were
+ * typed in an hour ago. Only the newest write describes what is displayed.
+ */
+function latestSource(sources) {
+  let best = null;
+  for (const [id, rec] of Object.entries(sources || {})) {
+    const t = rec && rec.at ? new Date(rec.at).getTime() : NaN;
+    if (Number.isNaN(t)) continue;
+    if (!best || t > best.time) best = { id, time: t, record: rec };
+  }
+  return best;
+}
+
+/**
+ * Renders the warning banner.
+ *
+ * Deliberately not a subtle tint: the whole point is that a stale build is
+ * indistinguishable from a healthy one unless something says so outright.
+ */
+function renderStaleness() {
+  const box = document.getElementById('staleness');
+  if (!box) return;
+
+  // Read the clock on every render. Holding a load-time timestamp would mean an
+  // installed PWA or a tab left open for days never crosses a threshold, which
+  // is exactly the long-lived session this feature is meant to protect.
+  const now = state.nowOverride instanceof Date ? state.nowOverride : new Date();
+  const problems = [];
+
+  const generatedAt = state.data && state.data.generatedAt;
+  const parsedAt = parseGeneratedAt(generatedAt);
+  let dataBroken = null;
+  if (!generatedAt) dataBroken = 'data.json has no generatedAt, so its age cannot be checked.';
+  // A present-but-unreadable timestamp must not degrade to "no timestamp":
+  // that path does not warn, and a build.py format change would then render as
+  // perfectly healthy — the precise silent failure this exists to catch.
+  else if (!parsedAt) dataBroken = `data.json has an unreadable build time (${generatedAt}).`;
+
+  const dataState = classifyFreshness({
+    at: parsedAt,
+    now,
+    cadenceHours: DATA_CADENCE_HOURS,
+    brokenReason: dataBroken,
+  });
+  if (isConcerning(dataState.level)) {
+    problems.push({
+      level: dataState.level,
+      title: 'Dividend data is out of date',
+      detail: dataState.reason
+        ? dataState.reason
+        : `Last rebuilt ${describeAgeHours(dataState.ageHours)}. It should refresh daily, so `
+          + (dataState.level === 'stale'
+            ? 'a scheduled build has been missed. Prices and upcoming dates may have moved on.'
+            : 'the scheduled build has almost certainly been failing. Prices and upcoming '
+              + 'dates below may be wrong.'),
+    });
+  }
+
+  const newest = latestSource(state.syncSources);
+  if (newest && Object.keys(state.holdings || {}).length > 0) {
+    const s = classifyFreshness({
+      at: newest.record.at,
+      now,
+      cadenceHours: HOLDINGS_CADENCE_HOURS,
+      brokenReason: newest.record.brokenReason,
+    });
+    if (isConcerning(s.level)) {
+      const label = newest.record.label || newest.id;
+      problems.push({
+        level: s.level,
+        title: 'Your share counts may be stale',
+        detail: s.reason
+          ? s.reason
+          : `Last updated ${describeAgeHours(s.ageHours)} via ${label}. Share counts drive every `
+            + 'dollar figure here, so re-sync or re-enter them if anything has changed.',
+      });
+    }
+  }
+
+  if (problems.length === 0) {
+    box.hidden = true;
+    box.textContent = '';
+    box.className = '';
+    return;
+  }
+
+  const overall = worstLevel(problems.map((p) => p.level));
+  box.hidden = false;
+  box.className = `staleness ${overall}`;
+  box.setAttribute('role', 'status');
+  box.textContent = '';
+
+  const heading = document.createElement('strong');
+  heading.textContent = overall === 'critical' || overall === 'broken'
+    ? 'Warning: this page may be showing stale numbers'
+    : 'Heads up: some data is getting old';
+  box.appendChild(heading);
+
+  const list = document.createElement('ul');
+  for (const p of problems) {
+    const li = document.createElement('li');
+    const t = document.createElement('span');
+    t.className = 'staleness-title';
+    t.textContent = p.title + ' — ';
+    li.appendChild(t);
+    li.appendChild(document.createTextNode(p.detail));
+    list.appendChild(li);
+  }
+  box.appendChild(list);
+}
+
+/**
+ * data.json's generatedAt is written by the Python build, which emits a local
+ * "MM/DD/YYYY HH:MM:SS" string rather than ISO. Date parsing of that format is
+ * implementation-defined, so try ISO first and fall back explicitly.
+ */
+function parseGeneratedAt(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  const raw = String(value).trim();
+  const iso = new Date(raw);
+  if (!Number.isNaN(iso.getTime())) return iso;
+  const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return null;
+  const d = new Date(
+    Number(m[3]), Number(m[1]) - 1, Number(m[2]),
+    Number(m[4]), Number(m[5]), Number(m[6] || 0)
+  );
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function renderSyncPill() {
@@ -500,10 +772,13 @@ function bindEvents() {
   document.getElementById('clear-holdings').addEventListener('click', () => {
     state.holdings = {};
     state.syncMeta = { at: null, source: null };
+    state.syncSources = {};
     save(HOLDINGS_KEY, state.holdings);
     save(SYNC_META_KEY, state.syncMeta);
+    save(SYNC_SOURCES_KEY, state.syncSources);
     renderHoldingsInputs();
     renderSyncPill();
+    renderStaleness();
     setStatus('Holdings cleared from this device.', 'ok');
     render();
   });
@@ -871,6 +1146,8 @@ async function init() {
   state.holdings = load(HOLDINGS_KEY, {});
   state.prefs = load(PREFS_KEY, state.prefs);
   state.syncMeta = load(SYNC_META_KEY, { at: null, source: null });
+  state.syncSources = migrateSyncMeta(state.syncMeta, load(SYNC_SOURCES_KEY, {}));
+  save(SYNC_SOURCES_KEY, state.syncSources);
 
   const syncBtn = document.getElementById('sync-bank');
   if (syncBtn) syncBtn.hidden = !WORKER_BASE;
@@ -902,6 +1179,9 @@ async function init() {
   } catch (err) {
     document.getElementById('meta').textContent =
       'Could not load data.json (' + err.message + '). If offline, a cached copy may load shortly.';
+    // A failed fetch is exactly when a staleness warning matters most: the
+    // service worker may serve an old cached copy and look perfectly normal.
+    renderStaleness();
     return;
   }
 
@@ -912,7 +1192,14 @@ async function init() {
   });
 
   renderMeta();
+  renderStaleness();
   renderHoldingsInputs();
+
+  // An installed PWA is resumed far more often than it is loaded. Re-check on
+  // resume so a session left open for days doesn't sit on a load-time verdict.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) renderStaleness();
+  });
   renderNotes();
   bindEvents();
   render();
@@ -926,7 +1213,18 @@ if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', init);
 }
 
-// Exported so the CSV import logic can be unit tested under Node.
+// Exported so the CSV import and staleness logic can be unit tested under Node.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { parseCsv, extractHoldings, parseDate };
+  module.exports = {
+    parseCsv,
+    extractHoldings,
+    parseDate,
+    classifyFreshness,
+    worstLevel,
+    isConcerning,
+    migrateSyncMeta,
+    parseGeneratedAt,
+    describeAgeHours,
+    latestSource,
+  };
 }

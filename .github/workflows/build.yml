@@ -55,6 +55,9 @@ jobs:
       - name: Run SnapTrade tests
         run: node --test tests/snaptrade.test.mjs
 
+      - name: Run freshness tests
+        run: node --test tests/freshness.test.cjs
+
       - name: Refresh data.json
         run: python build.py --verbose
 
