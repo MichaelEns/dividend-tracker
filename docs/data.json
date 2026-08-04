@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-04T20:30:10+00:00",
+  "generatedAt": "2026-08-04T21:35:29+00:00",
   "asOfDate": "2026-08-04",
   "version": "1.0.0",
   "horizonYears": 3,
@@ -595,12 +595,12 @@
       "name": "Fidelity 500 Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr/Jul/Oct/Dec. Yahoo folds any capital-gain distribution into the same stream.",
-      "price": 264.23,
+      "price": 268.96,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 2.76,
-      "yieldPct": 1.0445,
+      "yieldPct": 1.0262,
       "growthRate": 0.04129,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
