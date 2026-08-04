@@ -424,6 +424,7 @@ tbody tr.dist-row td:first-child {
    announced twice. */
 .date-alt,
 .amt-alt,
+.h-compact,
 .status-mini { display: none; }
 
 .status-mini {
@@ -506,6 +507,13 @@ tfoot td { font-weight: 650; border-top: 2px solid var(--border); }
   .date-alt,
   .amt-alt { display: block; }
   .alt-line { display: block; }
+
+  /* The folded date column now leads with the pay date, so its heading has to
+     say so. Both labels ship in the markup and CSS picks one, which keeps the
+     heading correct for whichever layout is actually on screen and leaves only
+     that one in the accessibility tree. */
+  .h-wide { display: none; }
+  .h-compact { display: inline; }
 
   /* Inline with the symbol rather than on its own line: an extra line per row
      costs about a row and a half of visible list on a phone. */

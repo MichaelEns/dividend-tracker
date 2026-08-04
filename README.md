@@ -54,6 +54,32 @@ python build.py --verbose
 The pipeline uses only the Python standard library, so no `pip install` is
 needed on a clean CI runner.
 
+### Where each date comes from
+
+| Field | Source |
+| --- | --- |
+| Ex-date, amount (history) | Yahoo Finance |
+| Ex-date, amount (declared) | Nasdaq, plus `config/announced.json` |
+| **Pay date** | Nasdaq — for equities only |
+
+Yahoo's dividend history carries an ex-date and an amount and nothing else, so
+every paid row arrives with no pay date. Nasdaq publishes pay dates for the
+same dividends, going back over a decade, and the pipeline was already
+fetching them: `fetch_nasdaq_declared` requested the full table and then
+discarded every row whose ex-date had passed, on the grounds that Yahoo is the
+authority for historical *amounts*. It is not the authority for pay dates,
+because it has none. Those rows are now kept for their pay dates alone and
+merged onto the matching ex-date, which took MSFT from 12 of 60 rows carrying a
+pay date to 60 of 60.
+
+Only blanks are filled: a pay date already present came from a source naming
+that specific dividend, which beats a lookup. This also feeds `_pay_lag`, so
+projected dividends inherit a lag measured over years of real history instead
+of over whatever single announcement happened to be in flight.
+
+Mutual funds get nothing — Nasdaq does not cover them and no free feed does, so
+`config/announced.json` is the only way to give FXAIX or FSKAX a pay date.
+
 ## Deploying the public page (GitHub Pages)
 
 1. Create a public GitHub repo, push this tree to it.
@@ -250,15 +276,31 @@ Seven columns do not fit on a phone. The old behaviour was a horizontally
 scrolling table, which meant you could never see a payment's date and its dollar
 amount at the same time — the two things you actually want to compare.
 
-Under 560px the table folds to three columns — **Symbol · Ex-date · Your
+Under 560px the table folds to three columns — **Symbol · Pay date · Your
 amount** — and the rest is folded into those cells rather than dropped:
 
 | Hidden column | Where it goes |
 | ------------- | ------------- |
-| Pay date      | *"pays Sep 10"* under the ex-date (year omitted; the ex-date above supplies it) |
+| Ex-date       | *"ex Aug 20"* under the pay date (year omitted; the pay date above supplies it) |
 | Per share     | *"$0.9100"* then *"× 100 sh"* on a second line under the amount |
 | Shares        | the second of those two lines |
 | Status        | a small pill inline beside the symbol |
+
+**The folded column leads with the pay date, not the ex-date.** Which one is
+prominent is not a style choice: the ex-date only says which dividend you
+qualified for, while the pay date says when the cash actually lands, and on a
+phone that is the thing worth reading at a glance. The wide table keeps both as
+separate columns, so this only applies to the fold — and the heading switches
+with it, because a column headed "Ex-date" showing pay dates would be worse
+than either arrangement.
+
+Not every row can answer it. Yahoo publishes no pay dates at all, and Nasdaq —
+which does — covers no open-end mutual funds, so the two Fidelity funds here
+have none and never will from a free feed. Those rows lead with their ex-date
+and label it `ex-date`, rather than leading with "TBD" and burying the one date
+that is known. The label is deliberately not "pay TBD": most such rows were
+paid years ago, so nothing about them is to be determined. A symbol with no pay
+dates at all says why once, in its notes.
 
 Two non-obvious details:
 
@@ -537,6 +579,7 @@ node --test tests/freshness.test.cjs       # staleness classification + syncMeta
 node --test tests/quarters.test.cjs        # quarter bucketing for the colour bands
 node --test tests/sw.test.cjs              # service worker fetch strategy + cache lifecycle
 node --test tests/accounts.test.cjs        # per-account share counts + migration
+node --test tests/paydates.test.cjs        # the folded portrait date column
 ```
 
 There is also an end-to-end smoke test that loads the real page in headless Edge

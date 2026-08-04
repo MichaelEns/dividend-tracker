@@ -35,6 +35,32 @@ def _load_json(path: Path) -> dict:
         return json.load(handle)
 
 
+def _apply_pay_dates(distributions: list, pay_dates: dict) -> int:
+    """Fill in missing pay dates from a source that publishes them.
+
+    Yahoo's dividend history carries an ex-date and an amount and nothing else,
+    so every paid row arrives with pay_date=None - which is the one date that
+    answers "when does the money reach my account". Nasdaq publishes it for the
+    same dividends, so the two are merged here on the ex-date they share.
+
+    Only blanks are filled. A pay date already present came from a source that
+    named this specific dividend (an announcement, or the user's own
+    config/announced.json), and that is better evidence than a lookup table.
+
+    Returns how many were filled, so the caller can say nothing if the answer
+    is zero rather than implying it enriched something.
+    """
+
+    if not pay_dates:
+        return 0
+    filled = 0
+    for dist in distributions:
+        if dist.pay_date is None and dist.ex_date in pay_dates:
+            dist.pay_date = pay_dates[dist.ex_date]
+            filled += 1
+    return filled
+
+
 def _dedupe(distributions: list) -> list:
     """Drop duplicates that arrive from more than one source for the same slot."""
 
@@ -66,7 +92,9 @@ def build_symbol(symbol_config, announcements: dict, today: date, horizon_years:
 
     if symbol_config.kind != "fund":
         try:
-            confirmed_future.extend(fetch_nasdaq_declared(symbol, today))
+            declared, pay_dates = fetch_nasdaq_declared(symbol, today)
+            confirmed_future.extend(declared)
+            _apply_pay_dates(history, pay_dates)
         except SourceError as exc:
             result.warnings.append(f"Could not check Nasdaq for declared dividends: {exc}")
 
@@ -104,6 +132,18 @@ def build_symbol(symbol_config, announcements: dict, today: date, horizon_years:
         )
 
     result.distributions = history + confirmed_future + projections
+
+    # Portrait leads with the pay date, so a symbol that has none needs to say
+    # why once rather than leave every row looking broken. Stated from the
+    # finished set, not from the symbol's kind: the honest trigger is "no row
+    # here has a pay date", whatever the reason.
+    if result.distributions and not any(d.pay_date for d in result.distributions):
+        result.warnings.append(
+            "No pay dates: Yahoo does not publish them and Nasdaq does not cover "
+            "open-end mutual funds, so rows show the ex-date instead. Add pay_date "
+            "entries to config/announced.json for any you care about."
+        )
+
     result.trailing_12m = trailing_12m(result.distributions, today)
     if result.price:
         result.yield_pct = (result.trailing_12m / result.price) * 100.0

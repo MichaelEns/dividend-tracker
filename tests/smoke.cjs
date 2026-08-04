@@ -467,6 +467,9 @@ async function main() {
         // Not every distribution has a declared pay date, so check the fold on
         // a row that actually has one rather than assuming the first does.
         const withPay = rows.find(r => r.querySelector('.c-pay').textContent.trim() !== '—');
+        // ...and one that genuinely has none. Mutual funds never do: no free
+        // feed publishes pay dates for them.
+        const noPay = rows.find(r => r.querySelector('.c-pay').textContent.trim() === '—');
         return JSON.stringify({
           sameRow: date.top < amount.bottom && amount.top < date.bottom,
           amountRightOfDate: amount.left >= date.right - 1,
@@ -476,8 +479,10 @@ async function main() {
           perHidden: hidden('.c-per'),
           statusHidden: hidden('.c-status'),
           altPay: withPay ? withPay.querySelector('.date-alt').textContent : null,
+          mainPay: withPay ? withPay.querySelector('.date-main').textContent : null,
           altPayFull: withPay ? withPay.querySelector('.c-pay').textContent.trim() : null,
-          altNoPay: row.querySelector('.date-alt').textContent,
+          altNoPay: noPay ? noPay.querySelector('.date-alt').textContent : null,
+          mainNoPay: noPay ? noPay.querySelector('.date-main').textContent : null,
           altAmount: row.querySelector('.amt-alt').textContent,
           miniStatus: row.querySelector('.status-mini').textContent,
           amountText: row.querySelector('.amt').textContent,
@@ -497,11 +502,19 @@ async function main() {
     assert.strictEqual(p.docOverflow, 0, 'page overflows the viewport in portrait');
     assert.strictEqual(p.footCols, 2, 'footer colspan must shrink with the folded table');
     assert.ok(p.altPay, 'no row in the fixture has a pay date to fold');
-    assert.match(p.altPay, /^pays /, 'pay date was not folded into the date cell: ' + p.altPay);
-    // The folded form drops the year, which the ex-date directly above supplies.
-    assert.ok(p.altPayFull.includes(p.altPay.replace(/^pays /, '').split(',')[0]),
-      `folded pay date ${p.altPay} does not match the real one ${p.altPayFull}`);
-    assert.match(p.altNoPay, /TBD/, 'a missing pay date should say so, not render blank');
+    // The pay date must survive the fold - it is the only place portrait can
+    // show it once the Pay date column is gone. It now leads the cell rather
+    // than trailing it, so the check moved from the alt line to the main one.
+    assert.ok(p.altPayFull.includes(p.mainPay.split(',')[0]),
+      `folded pay date ${p.mainPay} does not match the real one ${p.altPayFull}`);
+    assert.match(p.altPay, /^ex /,
+      'the demoted line should now be the ex-date: ' + p.altPay);
+    assert.ok(p.altNoPay, 'no row in the fixture is missing a pay date to fall back on');
+    assert.match(p.altNoPay, /ex-date/, 'a row with no pay date must label its large line');
+    assert.doesNotMatch(p.altNoPay, /TBD/i,
+      'a dividend paid years ago must not be described as pending: ' + p.altNoPay);
+    assert.ok(p.mainNoPay && !/TBD/i.test(p.mainNoPay),
+      'a row with no pay date should lead with its ex-date, not a placeholder: ' + p.mainNoPay);
     assert.match(p.altAmount, /×/, 'per-share breakdown missing on mobile: ' + p.altAmount);
     assert.ok(p.miniStatus.length > 0, 'status was dropped entirely in portrait');
     assert.match(p.amountText, /^\$/, 'dollar amount not shown in portrait: ' + p.amountText);
@@ -598,29 +611,47 @@ async function main() {
     // `.primary { display: inline-flex }` outranked the UA rule that acts on
     // it, so they were offered on a site with no worker deployed - and the
     // SnapTrade one then returned silently, looking simply broken.
+    //
+    // Which of those states applies now depends on whether docs/config.js has
+    // a WORKER_BASE, so this reads the page's own config rather than assuming.
+    // Both branches are real: the repo shipped for months with no worker, and
+    // has one now. window.prompt is stubbed either way - it blocks the page in
+    // headless, and once a worker IS configured the passphrase gate reaches it.
     const guards = await rpc(ws, id++, 'Runtime.evaluate', {
       expression: `(() => {
         const show = (id) => getComputedStyle(document.getElementById(id)).display;
         document.getElementById('holdings-body').hidden = false;
+        const configured = Boolean((window.DIVTRACKER_CONFIG || {}).WORKER_BASE);
         const before = { plaid: show('sync-bank'), snap: show('sync-snaptrade'), disc: show('disconnect-bank') };
-        // Force one visible and click it: with no worker configured it must say
-        // so rather than do nothing at all.
+        window.prompt = () => '';
         const btn = document.getElementById('sync-snaptrade');
         btn.hidden = false;
         btn.click();
         const status = document.getElementById('sync-status');
-        return JSON.stringify({ before, statusHidden: status.hidden, statusText: status.textContent });
+        return JSON.stringify({ configured, before,
+          statusHidden: status.hidden, statusText: status.textContent });
       })()`,
       returnByValue: true,
     });
     const g = JSON.parse(guards.result.value);
-    assert.strictEqual(g.before.plaid, 'none', 'the Plaid button is visible with no worker configured');
-    assert.strictEqual(g.before.snap, 'none', 'the SnapTrade button is visible with no worker configured');
     assert.strictEqual(g.before.disc, 'none', 'the disconnect button is visible with no connection');
-    assert.strictEqual(g.statusHidden, false, 'SnapTrade did nothing at all when tapped');
-    assert.match(g.statusText, /WORKER_BASE/,
-      'SnapTrade should explain that no worker is configured, said: ' + g.statusText);
-    console.log('sync buttons: hidden without a worker, and explain themselves when shown');
+    assert.strictEqual(g.statusHidden, false, 'the sync button did nothing at all when tapped');
+    if (g.configured) {
+      assert.notStrictEqual(g.before.plaid, 'none',
+        'a worker is configured but the Plaid button is still hidden');
+      // Refusing without a passphrase is the point: the worker fails closed,
+      // so a button that fired anyway would only ever produce a 401.
+      assert.match(g.statusText, /passphrase/i,
+        'with a worker configured, syncing should stop at the passphrase, said: ' + g.statusText);
+    } else {
+      assert.strictEqual(g.before.plaid, 'none', 'the Plaid button is visible with no worker configured');
+      assert.strictEqual(g.before.snap, 'none', 'the SnapTrade button is visible with no worker configured');
+      assert.match(g.statusText, /WORKER_BASE/,
+        'SnapTrade should explain that no worker is configured, said: ' + g.statusText);
+    }
+    console.log('sync buttons: ' + (g.configured
+      ? 'shown with a worker, and stop at the passphrase'
+      : 'hidden without a worker, and explain themselves when shown'));
 
     // Crossing the breakpoint while nothing matches the filters used to leave
     // the old footer behind, still summarising rows that are gone and still
@@ -685,6 +716,98 @@ async function main() {
     assert.strictEqual(rec.colSpan, 2, 'footer did not adopt the folded layout');
     assert.strictEqual(rec.overflow, 0,
       'table scrolls sideways again after refilling in portrait');
+
+    /* -------------------------------------------------------------------
+     * Portrait leads with the pay date. Still at 390px from the block above.
+     * ----------------------------------------------------------------- */
+    const payLead = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        const head = [...document.querySelectorAll('#dist-table thead th')]
+          .map((th) => ({ cls: th.className, text: th.innerText.trim(),
+                          shown: th.offsetParent !== null }));
+        // A row whose pay date is known, and one whose pay date is not. Both
+        // exist in the real feed: equities get pay dates from Nasdaq, mutual
+        // funds have none published anywhere.
+        const rows = [...document.querySelectorAll('#dist-body tr.dist-row')].map((tr) => {
+          const cell = tr.querySelector('.c-ex');
+          const main = cell.querySelector('.date-main');
+          const alt = cell.querySelector('.date-alt');
+          return {
+            sym: tr.querySelector('.sym').textContent,
+            main: main ? main.textContent.trim() : null,
+            alt: alt ? alt.textContent.trim() : null,
+            mainSize: main ? parseFloat(getComputedStyle(main).fontSize) : 0,
+            altSize: alt ? parseFloat(getComputedStyle(alt).fontSize) : 0,
+            altVisible: alt ? getComputedStyle(alt).display !== 'none' : false,
+          };
+        });
+        return JSON.stringify({ head, rows: rows.slice(0, 40) });
+      })()`,
+      returnByValue: true,
+    });
+    const pl = JSON.parse(payLead.result.value);
+
+    const exHead = pl.head.find((h) => h.cls.includes('c-ex'));
+    assert.ok(exHead, 'the folded date column has no header');
+    assert.match(exHead.text, /Pay date/i,
+      'portrait header must name the pay date, got "' + exHead.text + '"');
+    assert.doesNotMatch(exHead.text, /Ex-date/i,
+      'the wide "Ex-date" label leaked into the portrait header: "' + exHead.text + '"');
+    const payHead = pl.head.find((h) => h.cls.includes('c-pay'));
+    assert.ok(payHead && !payHead.shown,
+      'the separate Pay date column should be folded away in portrait');
+
+    const withPay = pl.rows.filter((r) => /^ex /.test(r.alt || ''));
+    const withoutPay = pl.rows.filter((r) => (r.alt || '') === 'ex-date');
+    assert.ok(withPay.length, 'no row showed a pay date as its main line');
+    assert.ok(withoutPay.length,
+      'no row exercised the missing-pay-date fallback; the fixture needs a fund row');
+
+    // The whole request: pay date big, ex date small.
+    for (const r of withPay) {
+      assert.ok(r.altVisible, r.sym + ': the ex-date line is not visible in portrait');
+      assert.ok(r.mainSize > r.altSize,
+        r.sym + ': pay date (' + r.mainSize + 'px) is not larger than the ex-date ('
+        + r.altSize + 'px)');
+      assert.match(r.alt, /^ex /, r.sym + ': the small line is not labelled as the ex-date');
+    }
+    for (const r of withoutPay) {
+      assert.doesNotMatch(r.main, /TBD|^—$/i,
+        r.sym + ': a row with no pay date put a placeholder on the prominent line');
+      assert.ok(r.mainSize > r.altSize,
+        r.sym + ': the ex-date fallback is not the prominent line');
+    }
+
+    // Crossing back to the wide layout must restore the ex-date column, or the
+    // desktop table would show the pay date twice and no ex-date at all.
+    await rpc(ws, id++, 'Emulation.setDeviceMetricsOverride', {
+      width: 1280, height: 900, deviceScaleFactor: 0, mobile: false,
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    const wideDates = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        render();
+        const th = document.querySelector('#dist-table thead th.c-ex');
+        const tr = [...document.querySelectorAll('#dist-body tr.dist-row')]
+          .find((r) => r.querySelector('.sym').textContent === 'MSFT');
+        return JSON.stringify({
+          head: th.innerText.trim(),
+          ex: tr.querySelector('.c-ex .date-main').textContent.trim(),
+          pay: tr.querySelector('.c-pay').textContent.trim(),
+          payShown: tr.querySelector('.c-pay').offsetParent !== null,
+        });
+      })()`,
+      returnByValue: true,
+    });
+    const wd = JSON.parse(wideDates.result.value);
+    assert.match(wd.head, /Ex-date/i,
+      'the wide header should say Ex-date again, got "' + wd.head + '"');
+    assert.doesNotMatch(wd.head, /Pay date/i,
+      'the portrait label leaked into the wide header: "' + wd.head + '"');
+    assert.ok(wd.payShown, 'the Pay date column should be back at desktop width');
+    assert.notStrictEqual(wd.ex, wd.pay,
+      'the wide table showed the same date in both the Ex-date and Pay date columns');
+
     await rpc(ws, id++, 'Emulation.clearDeviceMetricsOverride', {});
 
     // Pull to refresh. An installed app has no reload button, so this gesture
@@ -944,6 +1067,8 @@ async function main() {
     console.log('staleness: quiet when current, warns when stale');
     console.log('quarters: ' + q.rows + ' rows in ' + q.runs + ' contiguous bands, all labelled');
     console.log('portrait 390px: date + amount side by side, no horizontal scroll');
+    console.log('portrait dates: pay date large, ex-date small, header says Pay date,');
+    console.log('                and rows with no pay date lead with the ex-date');
     console.log('footer: cleared when empty, colspan follows the layout');
     console.log('pull to refresh: ignores a short drag, reloads on a full one,');
     console.log('                and lets a sideways swipe pan the table');

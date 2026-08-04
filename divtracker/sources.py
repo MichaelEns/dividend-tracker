@@ -171,14 +171,28 @@ def fetch_yahoo(symbol: str, years_back: int = 12) -> dict:
     }
 
 
-def fetch_nasdaq_declared(symbol: str, today: date) -> list[Distribution]:
-    """Return dividends Nasdaq reports as declared but not yet ex-dividend.
+def fetch_nasdaq_declared(symbol: str, today: date) -> tuple[list[Distribution], dict[date, date]]:
+    """Return Nasdaq's declared-but-not-yet-ex dividends, plus every pay date.
 
-    Mutual funds are not covered by this endpoint; callers should treat an empty
-    list as "no confirmation available" rather than "no future dividend".
+    Two things come back because one request carries both, and the second was
+    previously being thrown away. Nasdaq's table spans years of *past*
+    dividends, each with a paymentDate, but this function only ever kept the
+    future rows - Yahoo is the authority for historical amounts, so the past
+    rows looked redundant. Their pay dates are not redundant: Yahoo publishes
+    no pay date at all, so discarding them left the entire paid history unable
+    to say when the money actually arrived, which for an equity is about three
+    weeks after the ex-date.
+
+    The second return value therefore maps ex_date -> pay_date for every row
+    Nasdaq reports, past and future, for callers to merge into history.
+
+    Mutual funds are not covered by this endpoint; callers should treat an
+    empty list as "no confirmation available" rather than "no future dividend",
+    and an empty map as "no pay dates published" rather than "paid same day".
     """
 
     out: list[Distribution] = []
+    pay_dates: dict[date, date] = {}
     payload = None
     for assetclass in ("stocks", "etf"):
         try:
@@ -190,12 +204,20 @@ def fetch_nasdaq_declared(symbol: str, today: date) -> list[Distribution]:
             payload = candidate
             break
     if payload is None:
-        return out
+        return out, pay_dates
 
     rows = ((payload.get("data") or {}).get("dividends") or {}).get("rows") or []
     for row in rows:
         ex_date = _parse_us_date(row.get("exOrEffDate", ""))
         amount = _parse_money(row.get("amount", ""))
+        pay_date = _parse_us_date(row.get("paymentDate", ""))
+
+        # Collected before the amount check: a pay date is still usable even
+        # from a row whose amount Nasdaq formats in a way we cannot parse, and
+        # a pay date that precedes its ex-date is a data error, not a schedule.
+        if ex_date is not None and pay_date is not None and pay_date >= ex_date:
+            pay_dates[ex_date] = pay_date
+
         if ex_date is None or amount is None or amount <= 0:
             continue
         if ex_date <= today:
@@ -209,7 +231,7 @@ def fetch_nasdaq_declared(symbol: str, today: date) -> list[Distribution]:
                 amount=amount,
                 status=STATUS_ANNOUNCED,
                 kind=kind,
-                pay_date=_parse_us_date(row.get("paymentDate", "")),
+                pay_date=pay_date,
                 record_date=_parse_us_date(row.get("recordDate", "")),
                 declared_date=_parse_us_date(row.get("declarationDate", "")),
                 source="Nasdaq (declared)",
@@ -217,7 +239,7 @@ def fetch_nasdaq_declared(symbol: str, today: date) -> list[Distribution]:
         )
 
     out.sort(key=lambda d: d.ex_date)
-    return out
+    return out, pay_dates
 
 
 def load_manual_announcements(config: dict, today: date) -> dict[str, list[Distribution]]:

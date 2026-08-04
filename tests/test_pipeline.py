@@ -14,6 +14,7 @@ from divtracker.model import (
     STATUS_PROJECTED,
     Distribution,
 )
+from divtracker.build import _apply_pay_dates
 from divtracker.projection import annual_growth_rate, infer_cadence, project
 from divtracker.sources import _parse_money, _parse_us_date
 
@@ -142,3 +143,121 @@ class ProjectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PayDateEnrichmentTests(unittest.TestCase):
+    """Yahoo history has no pay dates; Nasdaq publishes them for the same rows."""
+
+    def _history(self):
+        return [
+            Distribution(symbol="MSFT", ex_date=date(2026, 2, 19), amount=0.91,
+                         status=STATUS_PAID, kind="income", source="Yahoo Finance"),
+            Distribution(symbol="MSFT", ex_date=date(2026, 5, 21), amount=0.91,
+                         status=STATUS_PAID, kind="income", source="Yahoo Finance"),
+        ]
+
+    def test_fills_missing_pay_dates_by_ex_date(self):
+        history = self._history()
+        filled = _apply_pay_dates(history, {
+            date(2026, 2, 19): date(2026, 3, 12),
+            date(2026, 5, 21): date(2026, 6, 11),
+        })
+        self.assertEqual(filled, 2)
+        self.assertEqual(history[0].pay_date, date(2026, 3, 12))
+        self.assertEqual(history[1].pay_date, date(2026, 6, 11))
+
+    def test_leaves_rows_with_no_match_alone(self):
+        history = self._history()
+        filled = _apply_pay_dates(history, {date(2020, 1, 1): date(2020, 1, 20)})
+        self.assertEqual(filled, 0)
+        self.assertIsNone(history[0].pay_date)
+
+    def test_never_overwrites_a_pay_date_that_is_already_known(self):
+        # An announcement names one specific dividend, which beats a lookup.
+        history = self._history()
+        history[0].pay_date = date(2026, 3, 13)
+        filled = _apply_pay_dates(history, {date(2026, 2, 19): date(2026, 3, 12)})
+        self.assertEqual(filled, 0)
+        self.assertEqual(history[0].pay_date, date(2026, 3, 13))
+
+    def test_an_empty_map_is_a_no_op(self):
+        history = self._history()
+        self.assertEqual(_apply_pay_dates(history, {}), 0)
+        self.assertIsNone(history[0].pay_date)
+
+
+class NasdaqPayDateHarvestTests(unittest.TestCase):
+    """The pay-date map must include PAST rows - that is the whole point."""
+
+    PAYLOAD = {
+        "data": {"dividends": {"rows": [
+            {"exOrEffDate": "08/20/2026", "paymentDate": "09/10/2026",
+             "recordDate": "08/20/2026", "declarationDate": "06/09/2026",
+             "amount": "$0.91", "type": "Cash"},
+            {"exOrEffDate": "02/19/2026", "paymentDate": "03/12/2026",
+             "recordDate": "02/19/2026", "declarationDate": "12/02/2025",
+             "amount": "$0.91", "type": "Cash"},
+            {"exOrEffDate": "11/20/2025", "paymentDate": "12/11/2025",
+             "recordDate": "11/20/2025", "declarationDate": "09/16/2025",
+             "amount": "$0.83", "type": "Cash"},
+        ]}}
+    }
+
+    def _fetch(self, today):
+        import divtracker.sources as src
+        original = src._get_json
+        src._get_json = lambda url, **kw: self.PAYLOAD
+        try:
+            return src.fetch_nasdaq_declared("MSFT", today)
+        finally:
+            src._get_json = original
+
+    def test_past_rows_are_excluded_from_declared_but_keep_their_pay_dates(self):
+        declared, pay_dates = self._fetch(date(2026, 8, 4))
+        self.assertEqual([d.ex_date for d in declared], [date(2026, 8, 20)],
+                         "only the not-yet-ex row is a declared dividend")
+        self.assertEqual(pay_dates, {
+            date(2026, 8, 20): date(2026, 9, 10),
+            date(2026, 2, 19): date(2026, 3, 12),
+            date(2025, 11, 20): date(2025, 12, 11),
+        }, "past pay dates were dropped - they are the reason this exists")
+
+    def test_declared_rows_still_carry_their_own_pay_date(self):
+        declared, _ = self._fetch(date(2026, 8, 4))
+        self.assertEqual(declared[0].pay_date, date(2026, 9, 10))
+
+    def test_a_pay_date_before_its_ex_date_is_rejected_as_bad_data(self):
+        import divtracker.sources as src
+        original = src._get_json
+        src._get_json = lambda url, **kw: {"data": {"dividends": {"rows": [
+            {"exOrEffDate": "05/21/2026", "paymentDate": "01/02/2026", "amount": "$0.91"},
+        ]}}}
+        try:
+            _, pay_dates = src.fetch_nasdaq_declared("MSFT", date(2026, 8, 4))
+        finally:
+            src._get_json = original
+        self.assertEqual(pay_dates, {})
+
+    def test_an_unparseable_amount_still_yields_its_pay_date(self):
+        import divtracker.sources as src
+        original = src._get_json
+        src._get_json = lambda url, **kw: {"data": {"dividends": {"rows": [
+            {"exOrEffDate": "05/21/2026", "paymentDate": "06/11/2026", "amount": "N/A"},
+        ]}}}
+        try:
+            declared, pay_dates = src.fetch_nasdaq_declared("MSFT", date(2026, 8, 4))
+        finally:
+            src._get_json = original
+        self.assertEqual(declared, [])
+        self.assertEqual(pay_dates, {date(2026, 5, 21): date(2026, 6, 11)})
+
+    def test_no_payload_returns_an_empty_pair_rather_than_raising(self):
+        import divtracker.sources as src
+        original = src._get_json
+        src._get_json = lambda url, **kw: {}
+        try:
+            declared, pay_dates = src.fetch_nasdaq_declared("FXAIX", date(2026, 8, 4))
+        finally:
+            src._get_json = original
+        self.assertEqual(declared, [])
+        self.assertEqual(pay_dates, {})

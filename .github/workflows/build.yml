@@ -67,6 +67,9 @@ jobs:
       - name: Run account tests
         run: node --test tests/accounts.test.cjs
 
+      - name: Run pay date tests
+        run: node --test tests/paydates.test.cjs
+
       - name: Refresh data.json
         run: python build.py --verbose
 

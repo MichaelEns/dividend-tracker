@@ -1105,6 +1105,30 @@ function compactLayout() {
     : false;
 }
 
+/**
+ * The two date lines for the folded portrait column.
+ *
+ * Portrait drops the separate Pay date column, so one cell has to carry both.
+ * Which one gets the prominent line is not a style question: the ex-date only
+ * says which dividend you qualified for, while the pay date says when the cash
+ * actually lands, and that is the thing worth reading at a glance.
+ *
+ * Not every row can answer it. Yahoo publishes no pay dates at all and Nasdaq
+ * covers no mutual funds, so the funds here have none and never will from a
+ * free feed. Rather than lead with "TBD" - which would be most rows, and would
+ * bury the one date we do know - a row without a pay date leads with its
+ * ex-date and labels it as one. The label is deliberately not "pay date TBD":
+ * most such rows were paid years ago, so nothing is "to be determined" about
+ * them; the pay date was simply never published. Why that happens is said once
+ * in the fund's notes rather than on every row.
+ */
+function portraitDates(row) {
+  if (row.payDate) {
+    return { main: formatDate(row.payDate), alt: 'ex ' + formatDateShort(row.exDate) };
+  }
+  return { main: formatDate(row.exDate), alt: 'ex-date' };
+}
+
 function renderTable(rows) {
   const body = document.getElementById('dist-body');
   const empty = document.getElementById('empty-state');
@@ -1127,6 +1151,9 @@ function renderTable(rows) {
 
   const nextIdx = rows.findIndex((r) => r.date > today);
   let lastQuarterKey = null;
+  // Read once rather than per row: matchMedia is a layout query, and this runs
+  // for every distribution on screen.
+  const compact = compactLayout();
 
   body.innerHTML = rows
     .map((row, idx) => {
@@ -1166,9 +1193,19 @@ function renderTable(rows) {
         : `<span class="alt-line">${perShare(row.amount)}</span> `
           + '<span class="alt-line">per share</span>';
 
+      // Portrait leads with the pay date; the wide table has a column of its
+      // own for that, so there the ex-date stays in its own column and the
+      // folded line is the redundant one CSS hides.
+      const dates = compact
+        ? portraitDates(row)
+        : {
+          main: formatDate(row.exDate),
+          alt: row.payDate ? 'pays ' + formatDateShort(row.payDate) : 'pay date TBD',
+        };
+
       return `<tr class="dist-row ${row.status}${quarter ? ' q' + quarter.index : ''}${idx === nextIdx ? ' next-up' : ''}">
         <td class="c-sym"><span class="sym">${row.symbol}</span><span class="status-mini ${row.status}">${row.status}</span><span class="kind">${KIND_LABEL[row.kind] || row.kind}</span></td>
-        <td class="c-ex"><span class="date-main">${formatDate(row.exDate)}</span>${quarterMark}<span class="date-alt">${row.payDate ? 'pays ' + formatDateShort(row.payDate) : 'pay date TBD'}</span></td>
+        <td class="c-ex"><span class="date-main">${dates.main}</span>${quarterMark}<span class="date-alt">${dates.alt}</span></td>
         <td class="c-pay">${row.payDate ? formatDate(row.payDate) : '—'}</td>
         <td class="c-per num">${perShare(row.amount)}</td>
         <td class="c-sh num">${row.shares != null ? shareText(row.shares) : '—'}</td>
@@ -1180,7 +1217,7 @@ function renderTable(rows) {
 
   const total = rows.reduce((acc, r) => acc + (hasHoldings ? (r.dollars || 0) : r.amount), 0);
   const tfoot = document.createElement('tfoot');
-  tfoot.innerHTML = `<tr><td colspan="${compactLayout() ? 2 : 5}">Total shown (${rows.length} row${rows.length === 1 ? '' : 's'})</td>
+  tfoot.innerHTML = `<tr><td colspan="${compact ? 2 : 5}">Total shown (${rows.length} row${rows.length === 1 ? '' : 's'})</td>
     <td class="c-amt num">${hasHoldings ? money(total) : perShare(total)}</td><td class="c-status"></td></tr>`;
   document.getElementById('dist-table').appendChild(tfoot);
 }
@@ -2111,6 +2148,7 @@ if (typeof module !== 'undefined' && module.exports) {
     extractHoldings,
     parseDate,
     quarterOf,
+    portraitDates,
     classifyFreshness,
     worstLevel,
     isConcerning,
