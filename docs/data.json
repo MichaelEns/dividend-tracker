@@ -1,0 +1,1514 @@
+{
+  "generatedAt": "2026-08-04T16:55:21+00:00",
+  "asOfDate": "2026-08-04",
+  "version": "1.0.0",
+  "horizonYears": 3,
+  "sources": [
+    "Yahoo Finance chart API (realized history and prices)",
+    "Nasdaq quote API (declared but unpaid dividends, equities and ETFs)",
+    "config/announced.json (manually entered official announcements)"
+  ],
+  "errors": [],
+  "symbols": [
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft Corporation",
+      "kind": "equity",
+      "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
+      "price": 494.64,
+      "currency": "USD",
+      "cadence": "quarterly",
+      "cadenceDays": 91,
+      "trailing12m": 3.56,
+      "yieldPct": 0.7197,
+      "growthRate": 0.1039,
+      "warnings": [],
+      "distributions": [
+        {
+          "symbol": "MSFT",
+          "ex_date": "2014-08-19",
+          "amount": 0.28,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2014-11-18",
+          "amount": 0.31,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2015-02-17",
+          "amount": 0.31,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2015-05-19",
+          "amount": 0.31,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2015-08-18",
+          "amount": 0.31,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2015-11-17",
+          "amount": 0.36,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2016-02-16",
+          "amount": 0.36,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2016-05-17",
+          "amount": 0.36,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2016-08-16",
+          "amount": 0.36,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2016-11-15",
+          "amount": 0.39,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2017-02-14",
+          "amount": 0.39,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2017-05-16",
+          "amount": 0.39,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2017-08-15",
+          "amount": 0.39,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2017-11-15",
+          "amount": 0.42,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2018-02-14",
+          "amount": 0.42,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2018-05-16",
+          "amount": 0.42,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2018-08-15",
+          "amount": 0.42,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2018-11-14",
+          "amount": 0.46,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2019-02-20",
+          "amount": 0.46,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2019-05-15",
+          "amount": 0.46,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2019-08-14",
+          "amount": 0.46,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2019-11-20",
+          "amount": 0.51,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2020-02-19",
+          "amount": 0.51,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2020-05-20",
+          "amount": 0.51,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2020-08-19",
+          "amount": 0.51,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2020-11-18",
+          "amount": 0.56,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2021-02-17",
+          "amount": 0.56,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2021-05-19",
+          "amount": 0.56,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2021-08-18",
+          "amount": 0.56,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2021-11-17",
+          "amount": 0.62,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2022-02-16",
+          "amount": 0.62,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2022-05-18",
+          "amount": 0.62,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2022-08-17",
+          "amount": 0.62,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2022-11-16",
+          "amount": 0.68,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2023-02-15",
+          "amount": 0.68,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2023-05-17",
+          "amount": 0.68,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2023-08-16",
+          "amount": 0.68,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2023-11-15",
+          "amount": 0.75,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2024-02-14",
+          "amount": 0.75,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2024-05-15",
+          "amount": 0.75,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2024-08-15",
+          "amount": 0.75,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2024-11-21",
+          "amount": 0.83,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2025-02-20",
+          "amount": 0.83,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2025-05-15",
+          "amount": 0.83,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2025-08-21",
+          "amount": 0.83,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2025-11-20",
+          "amount": 0.91,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2026-02-19",
+          "amount": 0.91,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2026-05-21",
+          "amount": 0.91,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2026-08-20",
+          "amount": 0.91,
+          "status": "announced",
+          "kind": "income",
+          "pay_date": "2026-09-10",
+          "record_date": "2026-08-20",
+          "declared_date": "2026-06-10",
+          "source": "Nasdaq (declared)"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2026-11-18",
+          "amount": 1.001446,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2026-12-09",
+          "source": "projection",
+          "confidence": 0.819,
+          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2027-02-17",
+          "amount": 1.001446,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2027-03-10",
+          "source": "projection",
+          "confidence": 0.793,
+          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2027-05-17",
+          "amount": 1.001446,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2027-06-07",
+          "source": "projection",
+          "confidence": 0.769,
+          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2027-08-16",
+          "amount": 1.001446,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2027-09-06",
+          "source": "projection",
+          "confidence": 0.745,
+          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2027-11-18",
+          "amount": 1.102082,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2027-12-09",
+          "source": "projection",
+          "confidence": 0.721,
+          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2028-02-17",
+          "amount": 1.102082,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2028-03-09",
+          "source": "projection",
+          "confidence": 0.698,
+          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2028-05-16",
+          "amount": 1.102082,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2028-06-06",
+          "source": "projection",
+          "confidence": 0.677,
+          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2028-08-16",
+          "amount": 1.102082,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2028-09-06",
+          "source": "projection",
+          "confidence": 0.655,
+          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2028-11-17",
+          "amount": 1.21283,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2028-12-08",
+          "source": "projection",
+          "confidence": 0.634,
+          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2029-02-16",
+          "amount": 1.21283,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2029-03-09",
+          "source": "projection",
+          "confidence": 0.614,
+          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2029-05-16",
+          "amount": 1.21283,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2029-06-06",
+          "source": "projection",
+          "confidence": 0.596,
+          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+        }
+      ]
+    },
+    {
+      "symbol": "FXAIX",
+      "name": "Fidelity 500 Index Fund",
+      "kind": "fund",
+      "notes": "Income distributions in Apr/Jul/Oct/Dec. Yahoo folds any capital-gain distribution into the same stream.",
+      "price": 264.23,
+      "currency": "USD",
+      "cadence": "quarterly",
+      "cadenceDays": 91,
+      "trailing12m": 2.76,
+      "yieldPct": 1.0445,
+      "growthRate": 0.04129,
+      "warnings": [
+        "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
+        "The data provider folds capital-gain distributions into the same stream as income, so a large December figure normally includes both."
+      ],
+      "distributions": [
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2014-10-03",
+          "amount": 0.33,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2014-12-19",
+          "amount": 0.556,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2015-04-01",
+          "amount": 0.326,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2015-04-10",
+          "amount": 0.271,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2015-07-01",
+          "amount": 0.45,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2015-10-02",
+          "amount": 0.366,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2015-12-18",
+          "amount": 0.617,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2016-04-15",
+          "amount": 0.384,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2016-07-08",
+          "amount": 0.369,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2016-10-07",
+          "amount": 0.388,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2016-12-16",
+          "amount": 0.834,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2017-04-07",
+          "amount": 0.495,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2017-07-07",
+          "amount": 0.419,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2017-10-06",
+          "amount": 0.451,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2017-12-15",
+          "amount": 0.478,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2018-04-06",
+          "amount": 0.491,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2018-07-06",
+          "amount": 0.449,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2018-10-05",
+          "amount": 0.451,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2018-12-14",
+          "amount": 0.875,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2018-12-28",
+          "amount": 0.106,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2019-04-05",
+          "amount": 0.574,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2019-07-05",
+          "amount": 0.48,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2019-10-04",
+          "amount": 0.502,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2019-12-13",
+          "amount": 0.751,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2020-04-08",
+          "amount": 0.542,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2020-07-10",
+          "amount": 0.498,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2020-10-02",
+          "amount": 0.456,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2020-12-11",
+          "amount": 0.586,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2021-04-09",
+          "amount": 0.413,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2021-07-02",
+          "amount": 0.496,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2021-10-01",
+          "amount": 0.527,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2021-12-10",
+          "amount": 0.583,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2022-04-08",
+          "amount": 0.462,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2022-07-01",
+          "amount": 0.577,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2022-10-07",
+          "amount": 0.581,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2022-12-16",
+          "amount": 0.636,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2023-04-05",
+          "amount": 0.538,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2023-07-07",
+          "amount": 0.602,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2023-10-06",
+          "amount": 0.559,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2023-12-15",
+          "amount": 0.702,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2024-04-05",
+          "amount": 0.553,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2024-07-05",
+          "amount": 0.625,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2024-10-04",
+          "amount": 0.642,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2024-12-20",
+          "amount": 0.723,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2025-04-04",
+          "amount": 0.597,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2025-07-11",
+          "amount": 0.654,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2025-10-03",
+          "amount": 0.672,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2025-12-19",
+          "amount": 0.725,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2026-04-10",
+          "amount": 0.668,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2026-07-10",
+          "amount": 0.695,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2026-10-05",
+          "amount": 0.699747,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.818,
+          "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2026-12-17",
+          "amount": 0.754935,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.807,
+          "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2027-04-05",
+          "amount": 0.695582,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.726,
+          "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2027-07-08",
+          "amount": 0.723696,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.777,
+          "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2027-10-05",
+          "amount": 0.728639,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.719,
+          "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2027-12-17",
+          "amount": 0.786106,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.71,
+          "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2028-04-05",
+          "amount": 0.724302,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.638,
+          "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2028-07-07",
+          "amount": 0.753578,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.684,
+          "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2028-10-05",
+          "amount": 0.758725,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.633,
+          "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2028-12-18",
+          "amount": 0.818564,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.625,
+          "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2029-04-05",
+          "amount": 0.754208,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.562,
+          "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
+        },
+        {
+          "symbol": "FXAIX",
+          "ex_date": "2029-07-09",
+          "amount": 0.784693,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.602,
+          "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
+        }
+      ]
+    },
+    {
+      "symbol": "FSKAX",
+      "name": "Fidelity Total Market Index Fund",
+      "kind": "fund",
+      "notes": "Income distributions in Apr and Dec; December typically also carries the capital-gain distribution.",
+      "price": 209.45,
+      "currency": "USD",
+      "cadence": "semiannual",
+      "cadenceDays": 119,
+      "trailing12m": 1.95,
+      "yieldPct": 0.931,
+      "growthRate": 0.02851,
+      "warnings": [
+        "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
+        "The data provider folds capital-gain distributions into the same stream as income, so a large December figure normally includes both."
+      ],
+      "distributions": [
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2014-12-19",
+          "amount": 0.828,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2015-04-10",
+          "amount": 0.17,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2015-12-18",
+          "amount": 1.292,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2016-04-15",
+          "amount": 0.293,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2016-12-16",
+          "amount": 1.273,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2017-04-12",
+          "amount": 0.299,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2017-12-15",
+          "amount": 1.477,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2018-04-11",
+          "amount": 0.273,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2018-12-14",
+          "amount": 1.457,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2018-12-28",
+          "amount": 0.064,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2019-04-12",
+          "amount": 0.371,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2019-12-13",
+          "amount": 1.383,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2020-04-08",
+          "amount": 0.231,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2020-12-11",
+          "amount": 1.327,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2021-04-09",
+          "amount": 0.135,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2021-12-10",
+          "amount": 1.4,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2022-04-08",
+          "amount": 0.178,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2022-12-16",
+          "amount": 1.544,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2023-04-14",
+          "amount": 0.219,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2023-12-15",
+          "amount": 1.61,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2023-12-27",
+          "amount": 0.03,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2024-04-12",
+          "amount": 0.26,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2024-12-20",
+          "amount": 1.652,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2025-04-11",
+          "amount": 0.108,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2025-12-19",
+          "amount": 1.786,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2026-04-10",
+          "amount": 0.164,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": null,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2026-12-18",
+          "amount": 1.836919,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.458,
+          "basis": "Dec 2025 distribution of $1.7860/share grown +2.9%/yr"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2027-04-12",
+          "amount": 0.168676,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.569,
+          "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2027-12-20",
+          "amount": 1.889289,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.403,
+          "basis": "Dec 2025 distribution of $1.7860/share grown +2.9%/yr"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2028-04-11",
+          "amount": 0.173485,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.501,
+          "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2028-12-19",
+          "amount": 1.943153,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.354,
+          "basis": "Dec 2025 distribution of $1.7860/share grown +2.9%/yr"
+        },
+        {
+          "symbol": "FSKAX",
+          "ex_date": "2029-04-11",
+          "amount": 0.178431,
+          "status": "projected",
+          "kind": "distribution",
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.441,
+          "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
+        }
+      ]
+    }
+  ]
+}

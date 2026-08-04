@@ -1,0 +1,17 @@
+name = "divtracker-plaid"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+# Configure via `wrangler secret put`:
+#   PLAID_CLIENT_ID
+#   PLAID_SECRET
+#   PLAID_ENV                (sandbox | development | production; default: production)
+#   ALLOWED_ORIGINS          (comma-separated, e.g. https://<you>.github.io)
+#
+# No public/secret values live in this file.
+
+[vars]
+PLAID_PRODUCTS = "investments"
+PLAID_COUNTRY_CODES = "US"
+PLAID_CLIENT_NAME = "Dividend Tracker"

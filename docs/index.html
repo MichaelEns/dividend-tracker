@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f172a" />
+<meta name="description" content="Historical, announced and projected dividends and distributions." />
+<title>Dividend &amp; Distribution Tracker</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128176;</text></svg>" />
+<link rel="stylesheet" href="styles.css" />
+<script src="config.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <h1>Dividends &amp; Distributions</h1>
+    <p class="meta" id="meta">Loading…</p>
+  </div>
+</header>
+
+<main id="main">
+  <section class="panel" id="summary-panel">
+    <div class="cards" id="summary-cards"></div>
+  </section>
+
+  <section class="panel">
+    <button class="disclosure" id="holdings-toggle" aria-expanded="false" aria-controls="holdings-body">
+      <span>Your holdings</span>
+      <span class="disclosure-hint" id="holdings-hint">Tap to enter share counts</span>
+    </button>
+    <div class="sync-strip">
+      <div class="sync-strip-line">
+        <span class="sync-label">Last updated</span>
+        <span id="sync-pill" class="sync-pill never" title="Holdings have never been synced on this device.">never</span>
+        <span id="sync-source" class="sync-source"></span>
+      </div>
+    </div>
+    <div class="disclosure-body" id="holdings-body" hidden>
+      <p class="privacy">
+        <strong>Private to this device.</strong> Share counts are stored only in this browser's
+        local storage. They are never uploaded, never sent to the server and are not part of the
+        published page.
+      </p>
+      <div id="holdings-inputs" class="holdings-grid"></div>
+      <div class="holdings-actions">
+        <button type="button" class="primary" id="sync-bank" hidden>
+          Sync from bank <span class="hint-inline">(one-off, no stored credentials)</span>
+        </button>
+        <label class="file-button">
+          Import positions CSV
+          <input type="file" id="csv-input" accept=".csv,text/csv" hidden />
+        </label>
+        <button type="button" class="ghost" id="clear-holdings">Clear</button>
+      </div>
+      <p class="hint" id="sync-status" hidden></p>
+      <p class="hint" id="csv-status">
+        Works with the positions CSV exported from Fidelity or U.S. Bank / U.S. Bancorp
+        Investments. The file is read in your browser and never leaves this device.
+      </p>
+      <label class="checkbox">
+        <input type="checkbox" id="drip-toggle" />
+        <span>Estimate share growth from reinvested distributions (DRIP)</span>
+      </label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="controls">
+      <div class="chips" id="symbol-chips" role="group" aria-label="Filter by symbol"></div>
+      <div class="control-row">
+        <div class="segmented" role="group" aria-label="Time range">
+          <button type="button" data-range="upcoming" class="active">Upcoming</button>
+          <button type="button" data-range="history">History</button>
+          <button type="button" data-range="all">All</button>
+        </div>
+        <label class="checkbox inline">
+          <input type="checkbox" id="hide-projected" />
+          <span>Confirmed only</span>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="table-panel">
+    <div class="table-wrap">
+      <table id="dist-table">
+        <thead>
+          <tr>
+            <th scope="col">Symbol</th>
+            <th scope="col">Ex-date</th>
+            <th scope="col">Pay date</th>
+            <th scope="col" class="num">Per share</th>
+            <th scope="col" class="num">Shares</th>
+            <th scope="col" class="num">Your amount</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody id="dist-body"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="empty-state" hidden>No distributions match the current filters.</p>
+  </section>
+
+  <section class="panel">
+    <h2 class="section-title">By calendar year</h2>
+    <div class="table-wrap">
+      <table id="year-table">
+        <thead>
+          <tr>
+            <th scope="col">Year</th>
+            <th scope="col" class="num">Confirmed</th>
+            <th scope="col" class="num">Projected</th>
+            <th scope="col" class="num">Total</th>
+          </tr>
+        </thead>
+        <tbody id="year-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel notes" id="notes-panel"></section>
+
+  <footer class="footer">
+    <p>
+      <strong>Projections are estimates, not guarantees.</strong> Rows marked
+      <span class="badge projected">Projected</span> are extrapolated from payout history and have
+      not been declared by the issuer. Dividend and distribution amounts, schedules and capital-gain
+      figures change without notice. This tool is for personal tracking only and is not investment,
+      tax or financial advice.
+    </p>
+    <p id="sources" class="sources"></p>
+  </footer>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

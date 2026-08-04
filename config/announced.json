@@ -1,0 +1,22 @@
+{
+  "_comment": [
+    "Manual escape hatch for distributions that are officially ANNOUNCED but that no free API exposes.",
+    "This is mainly needed for Fidelity mutual funds (FXAIX/FSKAX), where Fidelity publishes ex/pay dates and",
+    "estimated year-end capital gains on fidelity.com but offers no public JSON feed.",
+    "Anything listed here is rendered as 'Announced' (confirmed), NOT as a projection, so only add real,",
+    "published figures and cite the source URL.",
+    "Entries are matched to generated projections by symbol + ex_date (within 20 days) and override them.",
+    "Delete entries once they have actually been paid - the pipeline will pick them up from Yahoo automatically."
+  ],
+  "announced": [
+    {
+      "symbol": "FXAIX",
+      "ex_date": "2026-10-09",
+      "pay_date": "2026-10-09",
+      "amount": null,
+      "kind": "income",
+      "source": "https://www.fidelity.com/mutual-funds/information/distributions",
+      "note": "EXAMPLE ROW - amount is null so it is ignored. Replace amount with Fidelity's published figure to promote this to 'Announced'."
+    }
+  ]
+}

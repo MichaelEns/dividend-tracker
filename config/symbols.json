@@ -1,0 +1,26 @@
+{
+  "_comment": "Add symbols here. 'kind' picks which upstream sources are queried. Use 'equity' for stocks/ETFs (Nasdaq confirms declared-but-unpaid dividends) and 'fund' for open-end mutual funds (Yahoo history + manual announcements).",
+  "symbols": [
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft Corporation",
+      "kind": "equity",
+      "expected_cadence": "quarterly",
+      "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date)."
+    },
+    {
+      "symbol": "FXAIX",
+      "name": "Fidelity 500 Index Fund",
+      "kind": "fund",
+      "expected_cadence": "quarterly",
+      "notes": "Income distributions in Apr/Jul/Oct/Dec. Yahoo folds any capital-gain distribution into the same stream."
+    },
+    {
+      "symbol": "FSKAX",
+      "name": "Fidelity Total Market Index Fund",
+      "kind": "fund",
+      "expected_cadence": "semiannual",
+      "notes": "Income distributions in Apr and Dec; December typically also carries the capital-gain distribution."
+    }
+  ]
+}

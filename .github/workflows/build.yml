@@ -1,0 +1,84 @@
+name: Build and deploy
+
+on:
+  schedule:
+    # 12:15 UTC daily (~5:15am PT), after US markets have processed any newly
+    # announced dividends from the prior session.
+    - cron: "15 12 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "divtracker/**"
+      - "config/**"
+      - "docs/**"
+      - "tests/**"
+      - "build.py"
+      - ".github/workflows/build.yml"
+
+# contents:write is required because the build commits the refreshed data.json
+# back to the repository so the site has a durable, diffable history.
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The pipeline is standard-library only, so there is no install step that
+      # can break the daily refresh.
+      - name: Run pipeline tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run browser-logic tests
+        run: node --test tests/csv.test.cjs
+
+      - name: Run worker tests
+        run: node --test tests/worker.test.mjs
+
+      - name: Refresh data.json
+        run: python build.py --verbose
+
+      - name: Commit refreshed data.json
+        run: |
+          if ! git diff --quiet -- docs/data.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add docs/data.json
+            git commit -m "chore: refresh data.json [skip ci]"
+            git push
+          else
+            echo "No change to docs/data.json"
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
