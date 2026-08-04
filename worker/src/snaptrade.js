@@ -233,9 +233,17 @@ async function fetchSnaptradeHoldings(env) {
     }
   }
 
+  // Name every linked brokerage rather than counting them. The front end no
+  // longer keys storage off this string, but it is still what the user reads,
+  // and "2 accounts" tells them nothing about which two.
+  const named = [...institutions];
+  const institution = named.length === 0 ? null
+    : named.length <= 3 ? named.join(" + ")
+      : `${named.slice(0, 2).join(" + ")} +${named.length - 2} more`;
+
   return {
     holdings: merged,
-    institution: institutions.size === 1 ? [...institutions][0] : (institutions.size ? `${institutions.size} accounts` : null),
+    institution,
     accounts: accounts.length,
     connected: true,
   };

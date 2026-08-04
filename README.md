@@ -22,6 +22,9 @@ browser's localStorage.
   interpolates **green → red over one quarter** (92 days) so you know when to
   refresh.
 - CSV import fallback for anyone who doesn't want to run the worker.
+- Per-account share counts, so a fund split between two institutions is tracked
+  properly and syncing one can't wipe the other — see
+  [Holdings across several institutions](#holdings-across-several-institutions).
 - Distributions colour-coded by quarter, and a table that folds to three
   columns in portrait so dates and dollar amounts stay side by side.
 - Pull down to refresh, which also checks for a new build — see
@@ -212,8 +215,8 @@ amount** — and the rest is folded into those cells rather than dropped:
 | Hidden column | Where it goes |
 | ------------- | ------------- |
 | Pay date      | *"pays Sep 10"* under the ex-date (year omitted; the ex-date above supplies it) |
-| Per share     | *"$0.9100 × 100 sh"* under the amount |
-| Shares        | same line as per share |
+| Per share     | *"$0.9100"* then *"× 100 sh"* on a second line under the amount |
+| Shares        | the second of those two lines |
 | Status        | a small pill inline beside the symbol |
 
 Two non-obvious details:
@@ -226,6 +229,17 @@ Two non-obvious details:
 - **Without share counts the dollar column is all em dashes.** In portrait the
   per-share column is gone, so the folded cell falls back to showing the
   per-share rate instead of an empty-looking dash.
+
+Splitting the multiplication onto two lines was not enough on its own: it only
+recovered about 4px, because `th, td { white-space: nowrap }` meant the columns
+physically could not shrink no matter what was inside them. The fold breakpoint
+now lets cells wrap (with `.date-main`, `.sym` and `.amt` opting back out) and
+pins the three column widths with `table-layout: fixed`.
+
+The smoke test missed the original overflow for an instructive reason: it seeded
+no holdings, so the amount cell only ever contained `$0.9100 / share`. It now
+sweeps 320–430px with six-figure share counts. **Any layout measurement of that
+column has to seed realistic share counts or it measures nothing.**
 
 ### Freshness pill
 
@@ -289,6 +303,75 @@ moved backwards in time.
 The clock is read on every render, and the banner re-renders when a hidden tab
 becomes visible again — an installed PWA is resumed far more often than it is
 loaded, so a load-time verdict would go stale along with the data.
+
+## Holdings across several institutions
+
+The same fund is often held in more than one place — FXAIX split between
+Fidelity and U.S. Bank, say. A single share count per symbol cannot represent
+that, and it makes every sync quietly destructive: Fidelity reporting its own
+FXAIX overwrites the U.S. Bank shares with a smaller number that looks entirely
+plausible on screen.
+
+So share counts are stored per account:
+
+```
+divtracker.accounts.v1      [{ id, name }]              defined once, shared by every symbol
+divtracker.holdingLots.v1   { SYMBOL: { id: shares } }  one cell per symbol per account
+divtracker.holdings.v1      { SYMBOL: total }           derived; still written for rollback
+```
+
+`state.holdings` remains the plain symbol → total map, so nothing downstream of
+it — the table, the projections, DRIP, the empty-state checks — knows accounts
+exist. Only the holdings panel does.
+
+Points worth knowing:
+
+- **A sync replaces its account's holdings; it does not merge into them.** A
+  position sold at Fidelity arrives as an *absence*, and an absence cannot
+  overwrite anything, so merging would leave the sold row on screen forever.
+  Replacement is the only reading under which the number means "what that
+  institution holds today". Other accounts are never touched.
+- **An import matching zero tracked tickers writes nothing at all**, so a CSV
+  with unexpected column headings can't empty a good account. `applyHoldings`
+  and `replaceAccountLots` both return the number of positions kept, and 0 is
+  treated as a refusal rather than as an empty result.
+- **A sync's account is chosen by *provider*, not by the label the provider
+  prints.** SnapTrade reports the brokerage name for one connection and a
+  combined name once a second is linked; the Plaid institution lookup is
+  best-effort and falls back to `Bank sync` whenever it fails. Keying storage
+  off that string forked the bucket on a re-wording, and because buckets are
+  replaced independently the stale one was never reconciled — so the position
+  silently *doubled*. The label is now only a display name, updated in place.
+- **A sync adopts an existing account of the same name**, whoever created it.
+  Two rails onto the same brokerage are reporting the same shares, so one
+  bucket is right; forking would double-count them.
+- **When a sync does create a genuinely new account that overlaps what other
+  accounts hold, it says so.** An aggregator reporting `Fidelity + U.S. Bank`
+  against hand-made `Fidelity` and `U.S. Bank` accounts is indistinguishable
+  from a real third institution, so the status line names the affected symbols
+  instead of guessing.
+- **Account ids are derived from the name** (`U.S. Bank` → `u-s-bank`), and
+  collisions between two genuinely different names get a `-2` suffix.
+- **Accounts are created on first sight**, so syncing an institution does not
+  require setting it up by hand first.
+- **Existing share counts migrate automatically**: on the first run of this
+  build, the flat map is folded into a single account named after whatever last
+  wrote it. That is all the old model recorded, so it is all that can honestly
+  be recovered; split it by hand from there. The migration is gated on
+  `holdingLots.v1` being *absent* rather than empty — an empty map is a real
+  state (the user pressed Clear) and re-migrating would resurrect the flat map.
+- **An edit made by an older build is recovered, not discarded.** `holdings.v1`
+  is written as a mirror so a rollback still shows the right numbers, but an
+  older build will happily write *to* it, and then the lots are the stale copy.
+  On boot, exactly the symbols whose totals disagree are folded back in; every
+  untouched split is left alone. A recovered symbol collapses to one account,
+  because the flat map has no way to say which account changed — the share
+  count survives, and a split is far easier to re-enter than a number is to
+  remember.
+- The CSV target picker only appears once there are two or more accounts —
+  before that an import can only mean one thing.
+- Typing patches the "Total" line in place rather than re-rendering the panel,
+  which would drop focus mid-number.
 
 ## Staying up to date
 
@@ -391,11 +474,14 @@ node --test tests/worker.test.mjs           # Plaid worker auth + origin checks 
 node --test tests/snaptrade.test.mjs        # SnapTrade request signing + position parsing
 node --test tests/freshness.test.cjs       # staleness classification + syncMeta migration
 node --test tests/quarters.test.cjs        # quarter bucketing for the colour bands
+node --test tests/sw.test.cjs              # service worker fetch strategy + cache lifecycle
+node --test tests/accounts.test.cjs        # per-account share counts + migration
 ```
 
 There is also an end-to-end smoke test that loads the real page in headless Edge
 and asserts the table, filters, dollar maths, the staleness banner, the quarter
-colour bands and the portrait layout:
+colour bands, the portrait layout, pull-to-refresh and the per-account holdings
+panel:
 
 ```powershell
 cd docs; Start-Process python -ArgumentList '-m','http.server','8765'
@@ -404,9 +490,10 @@ cd ..; node tests\smoke.cjs "C:\Program Files (x86)\Microsoft\Edge\Application\m
 
 ## Privacy
 
-- Share counts, sync source, per-source freshness records, and last-synced
-  timestamp are stored **only** in your browser's localStorage
-  (`divtracker.*.v1` keys). Use "Clear" in the Your holdings panel to wipe them.
+- Share counts (per account), the account list, sync source, per-source
+  freshness records, and last-synced timestamp are stored **only** in your
+  browser's localStorage (`divtracker.*.v1` keys). Use "Clear" in the Your
+  holdings panel to wipe them.
 - The Cloudflare Worker stores one Plaid access token in your own Cloudflare KV
   so repeat syncs stay free. It is never sent to the browser, every endpoint
   that can read it requires `SYNC_PASSPHRASE`, and **Disconnect bank** deletes

@@ -215,7 +215,8 @@ async function main() {
         return JSON.stringify({
           status: document.getElementById('sync-status').textContent,
           stored: JSON.parse(localStorage.getItem('divtracker.holdings.v1') || '{}'),
-          msftShares: document.getElementById('sh-MSFT').value,
+          lots: JSON.parse(localStorage.getItem('divtracker.holdingLots.v1') || '{}'),
+          msftShares: document.querySelector('#holdings-inputs input[data-symbol="MSFT"]').value,
         });
       })()`,
       awaitPromise: true,
@@ -227,6 +228,124 @@ async function main() {
     assert.ok(!('SPAXX' in imported.stored), 'money-market row must be ignored');
     assert.strictEqual(imported.msftShares, '20', 'input did not refresh after import');
     assert.match(imported.status, /Imported 2 position/, 'import status not shown: ' + imported.status);
+    // The seeded FSKAX was not in the file, so replacing that account's bucket
+    // must drop it - a merge would leave a sold position on screen forever.
+    assert.ok(!('FSKAX' in imported.stored),
+      'a position absent from the import survived it: ' + JSON.stringify(imported.stored));
+    assert.deepStrictEqual(Object.keys(imported.lots).sort(), ['FXAIX', 'MSFT'],
+      'per-account storage disagrees with the totals');
+
+    // FXAIX is split between Fidelity and U.S. Bank. Drive the real UI: add two
+    // accounts, type into each box, and confirm the total is their sum - then
+    // confirm a sync of one institution cannot damage the other's shares.
+    const split = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(async () => {
+        document.getElementById('clear-holdings').click();
+        const add = (name) => {
+          document.getElementById('account-name').value = name;
+          document.getElementById('add-account').click();
+        };
+        add('Fidelity');
+        add('U.S. Bank');
+        const type = (symbol, account, value) => {
+          const el = document.querySelector(
+            '#holdings-inputs input[data-symbol="' + symbol + '"][data-account="' + account + '"]');
+          el.value = value;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          return el;
+        };
+        type('FXAIX', 'fidelity', '900');
+        const bankBox = type('FXAIX', 'u-s-bank', '100');
+        const totalOf = (symbol) => document.querySelector(
+          '#holdings-inputs input[data-symbol="' + symbol + '"]')
+          .closest('.holding').querySelector('.holding-total strong').textContent;
+
+        const beforeSync = {
+          accounts: state.accounts.map((a) => a.id),
+          total: state.holdings.FXAIX,
+          shown: totalOf('FXAIX'),
+          // Typing must not tear down the field being typed into.
+          kept: document.contains(bankBox),
+        };
+
+        // What a Fidelity sync does: replace that account only.
+        const kept = applyHoldings({ FXAIX: 925 }, 'Fidelity', 'snaptrade');
+        const afterSync = {
+          kept,
+          total: state.holdings.FXAIX,
+          fidelity: state.lots.FXAIX.fidelity,
+          bank: state.lots.FXAIX['u-s-bank'],
+          accounts: state.accounts.length,
+        };
+
+        // The same connection, after the provider re-words its own label -
+        // SnapTrade prints the brokerage name for one link and a combined name
+        // once a second is added. Keying storage off that string forked the
+        // bucket and silently doubled the position.
+        const reworded = applyHoldings({ FXAIX: 950 }, 'Fidelity + Somewhere', 'snaptrade');
+        const afterReword = {
+          reworded,
+          total: state.holdings.FXAIX,
+          accounts: state.accounts.length,
+          names: state.accounts.map((a) => a.name),
+        };
+
+        // An import that matches nothing must change nothing at all.
+        const junk = applyHoldings({ TSLA: 5 }, 'Fidelity', 'snaptrade');
+        const junkTotal = state.holdings.FXAIX;
+        const csvWrapHidden = document.getElementById('csv-account-wrap').hidden;
+        const options = [...document.querySelectorAll('#csv-account option')].map((o) => o.value);
+
+        const removeButton = document.querySelector('.account-remove[data-account="fidelity"]');
+        window.confirm = () => true;
+        if (removeButton) removeButton.click();
+        const removed = {
+          had: !!removeButton,
+          lots: state.lots.FXAIX,
+          accounts: state.accounts.length,
+          total: state.holdings.FXAIX,
+        };
+
+        // Leave the app holding something, so the later layout checks have
+        // dollar amounts to measure.
+        state.accounts = [];
+        state.lots = {};
+        applyHoldings({ MSFT: 100, FXAIX: 250, FSKAX: 10 }, 'Manual entry');
+
+        return JSON.stringify({ beforeSync, afterSync, afterReword, junk,
+          junkTotal: junkTotal, removed, csvWrapHidden, options });
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    const sp = JSON.parse(split.result.value);
+    assert.deepStrictEqual(sp.beforeSync.accounts, ['fidelity', 'u-s-bank'],
+      'both institutions should be on the shared account list');
+    assert.strictEqual(sp.beforeSync.total, 1000, 'the total is not the sum of both accounts');
+    assert.match(sp.beforeSync.shown, /^1,000/, 'the on-screen total is wrong: ' + sp.beforeSync.shown);
+    assert.ok(sp.beforeSync.kept, 'typing a share count destroyed the field being typed into');
+    assert.strictEqual(sp.afterSync.kept, 1, 'the Fidelity sync did not apply');
+    assert.strictEqual(sp.afterSync.fidelity, 925, 'Fidelity shares did not update');
+    assert.strictEqual(sp.afterSync.bank, 100,
+      'syncing Fidelity overwrote the U.S. Bank shares - the bug this feature exists to stop');
+    assert.strictEqual(sp.afterSync.total, 1025, 'the total did not follow the sync');
+    assert.strictEqual(sp.afterSync.accounts, 2, 'a sync invented a duplicate account');
+    assert.strictEqual(sp.afterReword.reworded, 1, 'the re-worded sync did not apply');
+    assert.strictEqual(sp.afterReword.accounts, 2,
+      'a re-worded provider label forked the account: ' + sp.afterReword.names);
+    assert.strictEqual(sp.afterReword.total, 1050,
+      'the position doubled when the provider re-worded its label');
+    assert.strictEqual(sp.junk, 0, 'an import matching no tracked ticker reported success');
+    assert.strictEqual(sp.junkTotal, 1050, 'an import matching nothing still changed the holdings');
+    assert.ok(sp.removed.had, 'no remove button was rendered for the Fidelity account');
+    assert.deepStrictEqual(sp.removed.lots, { 'u-s-bank': 100 },
+      'removing an account took the other account down with it');
+    assert.strictEqual(sp.removed.accounts, 1, 'the account was not removed');
+    assert.strictEqual(sp.removed.total, 100, 'the total did not follow the removal');
+    assert.strictEqual(sp.csvWrapHidden, false, 'the CSV target picker is hidden with two accounts');
+    assert.deepStrictEqual(sp.options, ['fidelity', 'u-s-bank'],
+      'the CSV target picker does not list the accounts');
+    console.log('accounts: FXAIX split 900 + 100, Fidelity sync to 925 left U.S. Bank alone');
 
     // The staleness banner is the one piece of UI that exists to be absent
     // most of the time, so check both halves: silent when the build is
@@ -683,6 +802,142 @@ async function main() {
     await rpc(ws, id++, 'Emulation.setTouchEmulationEnabled', { enabled: false });
     await rpc(ws, id++, 'Emulation.clearDeviceMetricsOverride', {});
 
+    // Everything above ran in one page load. Reload for real: a split that does
+    // not survive a restart is worthless, and the migration from the old flat
+    // map only ever runs on a cold boot, so it cannot be tested any other way.
+    await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith('divtracker.'))
+          .forEach((k) => localStorage.removeItem(k));
+        localStorage.setItem('divtracker.accounts.v1', JSON.stringify([
+          { id: 'fidelity', name: 'Fidelity' },
+          { id: 'u-s-bank', name: 'U.S. Bank' },
+        ]));
+        localStorage.setItem('divtracker.holdingLots.v1', JSON.stringify({
+          FXAIX: { fidelity: 900, 'u-s-bank': 100 },
+        }));
+        return 'seeded';
+      })()`,
+      returnByValue: true,
+    });
+    await rpc(ws, id++, 'Page.navigate', { url: URL_UNDER_TEST + '?reload=2' });
+    await new Promise((r) => setTimeout(r, 2500));
+    const reloaded = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `JSON.stringify({
+        total: state.holdings.FXAIX,
+        accounts: state.accounts.map((a) => a.name),
+        boxes: [...document.querySelectorAll('#holdings-inputs input[data-symbol="FXAIX"]')]
+          .map((el) => el.dataset.account + '=' + el.value),
+        stored: JSON.parse(localStorage.getItem('divtracker.holdings.v1') || 'null'),
+      })`,
+      returnByValue: true,
+    });
+    const rl = JSON.parse(reloaded.result.value);
+    assert.strictEqual(rl.total, 1000, 'the split did not survive a reload');
+    assert.deepStrictEqual(rl.accounts, ['Fidelity', 'U.S. Bank'], 'the account list did not persist');
+    assert.deepStrictEqual(rl.boxes, ['fidelity=900', 'u-s-bank=100'],
+      'the per-account boxes did not repopulate: ' + rl.boxes);
+    assert.deepStrictEqual(rl.stored, { FXAIX: 1000 },
+      'the derived totals key drifted from the lots: ' + JSON.stringify(rl.stored));
+
+    // A user upgrading from the flat map must not lose anything, and must not
+    // end up with shares filed under an account that has no input box.
+    await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith('divtracker.'))
+          .forEach((k) => localStorage.removeItem(k));
+        localStorage.setItem('divtracker.holdings.v1',
+          JSON.stringify({ MSFT: 7885.97, FXAIX: 1000 }));
+        localStorage.setItem('divtracker.syncMeta.v1',
+          JSON.stringify({ at: new Date().toISOString(), source: 'Fidelity' }));
+        return 'seeded';
+      })()`,
+      returnByValue: true,
+    });
+    await rpc(ws, id++, 'Page.navigate', { url: URL_UNDER_TEST + '?reload=3' });
+    await new Promise((r) => setTimeout(r, 2500));
+    const upgraded = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        const orphans = Object.values(state.lots)
+          .flatMap((byAccount) => Object.keys(byAccount))
+          .filter((acc) => !state.accounts.some((a) => a.id === acc));
+        return JSON.stringify({
+          holdings: state.holdings,
+          accounts: state.accounts.map((a) => a.name),
+          orphans,
+          boxes: [...document.querySelectorAll('#holdings-inputs input[data-symbol="MSFT"]')]
+            .map((el) => el.value),
+        });
+      })()`,
+      returnByValue: true,
+    });
+    const up = JSON.parse(upgraded.result.value);
+    assert.deepStrictEqual(up.holdings, { MSFT: 7885.97, FXAIX: 1000 },
+      'the upgrade lost share counts: ' + JSON.stringify(up.holdings));
+    assert.deepStrictEqual(up.accounts, ['Fidelity'],
+      'the migrated account should be named after whatever last wrote the holdings');
+    assert.deepStrictEqual(up.orphans, [],
+      'shares were filed under an account with no input box: ' + up.orphans);
+    assert.deepStrictEqual(up.boxes, ['7885.97'], 'the migrated shares have no editable box');
+
+    // Clear writes an empty lots map. That is a real state, not an absent one,
+    // so a reload must not re-run the migration and resurrect the flat map.
+    await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        document.getElementById('clear-holdings').click();
+        return JSON.stringify({
+          holdings: localStorage.getItem('divtracker.holdings.v1'),
+          lots: localStorage.getItem('divtracker.holdingLots.v1'),
+        });
+      })()`,
+      returnByValue: true,
+    });
+    await rpc(ws, id++, 'Page.navigate', { url: URL_UNDER_TEST + '?reload=4' });
+    await new Promise((r) => setTimeout(r, 2500));
+    const cleared = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: 'JSON.stringify({ holdings: state.holdings, lots: state.lots })',
+      returnByValue: true,
+    });
+    const cl = JSON.parse(cleared.result.value);
+    assert.deepStrictEqual(cl.holdings, {},
+      'Clear was undone by a reload: ' + JSON.stringify(cl.holdings));
+    assert.deepStrictEqual(cl.lots, {}, 'lots came back after Clear');
+
+    // An older build can only write the flat map. Overwriting it from the
+    // stale lots on the next boot would silently discard those edits.
+    await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(() => {
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith('divtracker.'))
+          .forEach((k) => localStorage.removeItem(k));
+        localStorage.setItem('divtracker.accounts.v1', JSON.stringify([
+          { id: 'fidelity', name: 'Fidelity' },
+          { id: 'u-s-bank', name: 'U.S. Bank' },
+        ]));
+        localStorage.setItem('divtracker.holdingLots.v1', JSON.stringify({
+          FXAIX: { fidelity: 900, 'u-s-bank': 100 }, MSFT: { fidelity: 10 },
+        }));
+        // What an older build leaves behind after the user edits MSFT there.
+        localStorage.setItem('divtracker.holdings.v1',
+          JSON.stringify({ FXAIX: 1000, MSFT: 25 }));
+        return 'seeded';
+      })()`,
+      returnByValue: true,
+    });
+    await rpc(ws, id++, 'Page.navigate', { url: URL_UNDER_TEST + '?reload=5' });
+    await new Promise((r) => setTimeout(r, 2500));
+    const rolledForward = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: 'JSON.stringify({ holdings: state.holdings, fxaix: state.lots.FXAIX })',
+      returnByValue: true,
+    });
+    const rec2 = JSON.parse(rolledForward.result.value);
+    assert.strictEqual(rec2.holdings.MSFT, 25,
+      'an edit made by an older build was discarded: ' + JSON.stringify(rec2.holdings));
+    assert.deepStrictEqual(rec2.fxaix, { fidelity: 900, 'u-s-bank': 100 },
+      'a symbol nobody touched lost its split: ' + JSON.stringify(rec2.fxaix));
+
     console.log('\nfilters: history=' + hist.paid + ' paid rows, confirmed-only='
       + confirmed.total + ' rows, chip filter OK');
     console.log('csv import: ' + imported.status);
@@ -692,6 +947,8 @@ async function main() {
     console.log('footer: cleared when empty, colspan follows the layout');
     console.log('pull to refresh: ignores a short drag, reloads on a full one,');
     console.log('                and lets a sideways swipe pan the table');
+    console.log('reload: the split persists, the flat map upgrades cleanly,');
+    console.log('        and Clear is not undone by a restart');
     console.log('\nSMOKE TEST PASSED');
   } finally {
     if (ws) ws.close();

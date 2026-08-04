@@ -1,0 +1,363 @@
+/*
+ * Tests for per-account share counts.
+ *
+ * The same fund can be held at several institutions - FXAIX sits at both
+ * Fidelity and U.S. Bank - and each is synced independently. Under the old
+ * flat symbol -> shares map, syncing either institution silently overwrote the
+ * other's shares, which looks exactly like a legitimate update and is
+ * impossible to notice on screen. These tests pin the two properties that stop
+ * that: a sync replaces only its own account's numbers, and the displayed
+ * total is always the sum of every account.
+ */
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+const path = require('node:path');
+
+const {
+  accountId,
+  findAccount,
+  addAccount,
+  syncAccount,
+  uniqueAccountId,
+  overlappingSymbols,
+  reconcileFlatHoldings,
+  removeAccount,
+  totalsFromLots,
+  setLot,
+  replaceAccountLots,
+  migrateHoldings,
+} = require(path.join(__dirname, '..', 'docs', 'app.js'));
+
+/* ------------------------------------------------------------------- naming */
+
+test('account ids ignore case, spacing and punctuation', () => {
+  assert.strictEqual(accountId('Fidelity'), 'fidelity');
+  assert.strictEqual(accountId('fidelity'), 'fidelity');
+  assert.strictEqual(accountId('U.S. Bank'), 'u-s-bank');
+  assert.strictEqual(accountId('  U.S. Bank  '), 'u-s-bank');
+  assert.strictEqual(accountId('U S Bank'), 'u-s-bank');
+});
+
+test('an unnameable account still gets a usable id', () => {
+  // Sources sometimes hand over punctuation-only or empty names. An empty id
+  // would collide with the object prototype chain and silently vanish.
+  assert.strictEqual(accountId('...'), 'account');
+  assert.strictEqual(accountId(''), 'account');
+  assert.strictEqual(accountId(null), 'account');
+});
+
+test('an account is found regardless of how the source spells it', () => {
+  const accounts = [{ id: 'u-s-bank', name: 'U.S. Bank' }];
+  assert.ok(findAccount(accounts, 'u.s. bank'));
+  assert.ok(findAccount(accounts, 'U S BANK'));
+  assert.strictEqual(findAccount(accounts, 'Fidelity'), null);
+  assert.strictEqual(findAccount([], 'Fidelity'), null);
+});
+
+test('adding an equivalent account reuses it instead of duplicating', () => {
+  // Otherwise "Fidelity" and "fidelity" would each hold a slice of the same
+  // position and the total would be right only by accident.
+  let { accounts } = addAccount([], 'Fidelity');
+  assert.strictEqual(accounts.length, 1);
+  const again = addAccount(accounts, 'fidelity');
+  assert.strictEqual(again.accounts.length, 1);
+  assert.strictEqual(again.added, false);
+  assert.strictEqual(again.account.name, 'Fidelity', 'the original label should win');
+});
+
+test('a blank account name is refused', () => {
+  const result = addAccount([{ id: 'a', name: 'A' }], '   ');
+  assert.strictEqual(result.added, false);
+  assert.strictEqual(result.account, null);
+  assert.strictEqual(result.accounts.length, 1);
+});
+
+test('addAccount does not mutate the list it was given', () => {
+  const original = [];
+  addAccount(original, 'Fidelity');
+  assert.strictEqual(original.length, 0);
+});
+
+/* ------------------------------------------------------------------- totals */
+
+test('the displayed total is the sum across every account', () => {
+  const lots = {
+    FXAIX: { fidelity: 900.5, 'u-s-bank': 99.5 },
+    MSFT: { fidelity: 10 },
+  };
+  assert.deepStrictEqual(totalsFromLots(lots), { FXAIX: 1000, MSFT: 10 });
+});
+
+test('empty, zero and negative counts do not create a position', () => {
+  // A symbol emptied everywhere must disappear, not linger as a row of $0.00.
+  const lots = { FXAIX: { fidelity: 0, 'u-s-bank': -5 }, MSFT: {} };
+  assert.deepStrictEqual(totalsFromLots(lots), {});
+  assert.deepStrictEqual(totalsFromLots({}), {});
+  assert.deepStrictEqual(totalsFromLots(null), {});
+});
+
+test('a non-numeric share count is ignored rather than poisoning the total', () => {
+  const lots = { FXAIX: { fidelity: 100, 'u-s-bank': 'lots' } };
+  assert.deepStrictEqual(totalsFromLots(lots), { FXAIX: 100 });
+});
+
+/* ---------------------------------------------------------------- one cell */
+
+test('typing into one account leaves the others alone', () => {
+  const before = { FXAIX: { fidelity: 900, 'u-s-bank': 100 } };
+  const after = setLot(before, 'FXAIX', 'u-s-bank', 120);
+  assert.deepStrictEqual(after.FXAIX, { fidelity: 900, 'u-s-bank': 120 });
+  assert.deepStrictEqual(before.FXAIX, { fidelity: 900, 'u-s-bank': 100 },
+    'setLot must not mutate its input');
+});
+
+test('clearing a field removes that account, and the symbol once it is empty', () => {
+  const before = { FXAIX: { fidelity: 900, 'u-s-bank': 100 }, MSFT: { fidelity: 5 } };
+  const one = setLot(before, 'FXAIX', 'u-s-bank', '');
+  assert.deepStrictEqual(one.FXAIX, { fidelity: 900 });
+  const none = setLot(one, 'FXAIX', 'fidelity', 0);
+  assert.ok(!('FXAIX' in none), 'a symbol held nowhere should not survive');
+  assert.deepStrictEqual(none.MSFT, { fidelity: 5 });
+});
+
+test('a symbol never held before can be filled in', () => {
+  const after = setLot({}, 'MSFT', 'fidelity', 12);
+  assert.deepStrictEqual(after, { MSFT: { fidelity: 12 } });
+});
+
+/* -------------------------------------------------------------- sync/import */
+
+test('a sync replaces its own account and no other', () => {
+  const before = { FXAIX: { fidelity: 900, 'u-s-bank': 100 }, MSFT: { fidelity: 10 } };
+  const { lots, kept } = replaceAccountLots(before, 'fidelity', { FXAIX: 950, MSFT: 11 },
+    ['FXAIX', 'MSFT']);
+  assert.strictEqual(kept, 2);
+  assert.deepStrictEqual(lots.FXAIX, { 'u-s-bank': 100, fidelity: 950 });
+  assert.deepStrictEqual(lots.MSFT, { fidelity: 11 });
+});
+
+test('a position sold at one institution disappears from it', () => {
+  // The whole point of replacing rather than merging: "sold" arrives as an
+  // absence, and an absence cannot overwrite anything.
+  const before = { FXAIX: { fidelity: 900, 'u-s-bank': 100 }, MSFT: { fidelity: 10 } };
+  const { lots } = replaceAccountLots(before, 'fidelity', { FXAIX: 900 }, ['FXAIX', 'MSFT']);
+  assert.ok(!('MSFT' in lots), 'MSFT was not in the sync, so Fidelity no longer holds it');
+  assert.deepStrictEqual(lots.FXAIX, { 'u-s-bank': 100, fidelity: 900 });
+});
+
+test('an untracked ticker in the file is skipped', () => {
+  const { lots, kept } = replaceAccountLots({}, 'fidelity', { FXAIX: 900, TSLA: 5 },
+    ['FXAIX', 'MSFT']);
+  assert.strictEqual(kept, 1);
+  assert.deepStrictEqual(lots, { FXAIX: { fidelity: 900 } });
+});
+
+test('symbols are matched case-insensitively', () => {
+  const { lots } = replaceAccountLots({}, 'fidelity', { fxaix: 900 }, ['FXAIX']);
+  assert.deepStrictEqual(lots, { FXAIX: { fidelity: 900 } });
+});
+
+test('an import matching nothing reports zero so the caller can refuse it', () => {
+  // Caller contract: kept === 0 means do not save. Wiping a good account
+  // because a CSV had the wrong column headings would be silent data loss.
+  const before = { FXAIX: { fidelity: 900 } };
+  const { kept } = replaceAccountLots(before, 'fidelity', { TSLA: 5 }, ['FXAIX']);
+  assert.strictEqual(kept, 0);
+});
+
+test('replaceAccountLots does not mutate its input', () => {
+  const before = { FXAIX: { fidelity: 900, 'u-s-bank': 100 } };
+  replaceAccountLots(before, 'fidelity', { FXAIX: 1 }, ['FXAIX']);
+  assert.deepStrictEqual(before, { FXAIX: { fidelity: 900, 'u-s-bank': 100 } });
+});
+
+/* ------------------------------------------------------------------ removal */
+
+test('removing an account forgets its shares but keeps everyone else', () => {
+  const accounts = [{ id: 'fidelity', name: 'Fidelity' }, { id: 'u-s-bank', name: 'U.S. Bank' }];
+  const lots = { FXAIX: { fidelity: 900, 'u-s-bank': 100 }, MSFT: { fidelity: 10 } };
+  const after = removeAccount(accounts, lots, 'fidelity');
+  assert.deepStrictEqual(after.accounts, [{ id: 'u-s-bank', name: 'U.S. Bank' }]);
+  assert.deepStrictEqual(after.lots, { FXAIX: { 'u-s-bank': 100 } });
+  assert.deepStrictEqual(totalsFromLots(after.lots), { FXAIX: 100 });
+});
+
+/* ---------------------------------------------------------- sync identity */
+
+test('a provider that re-words its label renames its account, it does not fork', () => {
+  // SnapTrade reports the brokerage name for one connection and something else
+  // entirely once a second is linked; the Plaid institution lookup is
+  // best-effort and falls back to "Bank sync". Keying storage off that string
+  // created a second bucket, and because buckets are replaced independently the
+  // stale one was never reconciled - so the position silently doubled.
+  let accounts = [];
+  ({ accounts } = syncAccount(accounts, 'snaptrade', 'Fidelity'));
+  const second = syncAccount(accounts, 'snaptrade', 'Fidelity + U.S. Bank');
+  assert.strictEqual(second.accounts.length, 1, 'a re-worded label forked the account');
+  assert.strictEqual(second.account.id, 'fidelity', 'the storage key must not move');
+  assert.strictEqual(second.account.name, 'Fidelity + U.S. Bank',
+    'the display name should follow the provider');
+});
+
+test('two different providers reporting one institution share a bucket', () => {
+  // Two rails onto the same brokerage are reporting the same shares. Forking
+  // would double-count them, which is worse than either rail winning outright.
+  let accounts = [];
+  ({ accounts } = syncAccount(accounts, 'plaid', 'Fidelity'));
+  const snap = syncAccount(accounts, 'snaptrade', 'Fidelity');
+  assert.strictEqual(snap.accounts.length, 1);
+  assert.strictEqual(snap.account.id, 'fidelity');
+});
+
+test('a sync adopts the account the user already made by hand', () => {
+  // Otherwise setting up "Fidelity", typing the split, then syncing would
+  // shadow it with a second bucket holding the same shares.
+  const manual = addAccount([], 'Fidelity').accounts;
+  const result = syncAccount(manual, 'snaptrade', 'Fidelity');
+  assert.strictEqual(result.accounts.length, 1);
+  assert.strictEqual(result.account.id, 'fidelity');
+  assert.strictEqual(result.account.provider, 'snaptrade');
+  assert.ok(!result.created, 'adopting an existing account is not creating one');
+});
+
+test('a genuinely new account is flagged as created', () => {
+  const first = syncAccount([], 'snaptrade', 'Fidelity');
+  assert.ok(first.created, 'the first sync must report that it made an account');
+});
+
+test('an aggregate sync landing beside existing accounts names what may double', () => {
+  // "Fidelity + U.S. Bank" against hand-made "Fidelity" and "U.S. Bank" is
+  // indistinguishable from a genuinely third institution, so say so rather
+  // than guess.
+  const lots = { FXAIX: { fidelity: 900, 'u-s-bank': 100 }, MSFT: { fidelity: 10 } };
+  assert.deepStrictEqual(
+    overlappingSymbols(lots, 'fidelity-u-s-bank', { FXAIX: 1000, MSFT: 10 }),
+    ['FXAIX', 'MSFT']);
+  // Shares already in the target account are being replaced, not added.
+  assert.deepStrictEqual(overlappingSymbols(lots, 'fidelity', { MSFT: 10 }), []);
+  assert.deepStrictEqual(overlappingSymbols({}, 'fidelity', { MSFT: 10 }), []);
+});
+
+test('a provider with no usable label still gets a stable account', () => {
+  const first = syncAccount([], 'plaid', '');
+  const second = syncAccount(first.accounts, 'plaid', null);
+  assert.strictEqual(second.accounts.length, 1);
+  assert.strictEqual(first.account.id, second.account.id);
+});
+
+test('syncAccount does not mutate the list it was given', () => {
+  const original = [{ id: 'fidelity', name: 'Fidelity', provider: 'snaptrade' }];
+  syncAccount(original, 'snaptrade', 'Something Else');
+  assert.strictEqual(original[0].name, 'Fidelity');
+});
+
+test('two different names that slug alike still get separate ids', () => {
+  const accounts = [{ id: 'fidelity', name: 'Fidelity' }];
+  assert.strictEqual(uniqueAccountId(accounts, 'Fidelity'), 'fidelity-2');
+  assert.strictEqual(uniqueAccountId(accounts, 'U.S. Bank'), 'u-s-bank');
+  assert.strictEqual(uniqueAccountId([], 'Fidelity'), 'fidelity');
+});
+
+test('re-wording a label cannot double a position', () => {
+  // The end-to-end shape of the bug, in the terms the user would see it.
+  let accounts = [];
+  let lots = {};
+  const sync = (label, holdings) => {
+    const resolved = syncAccount(accounts, 'snaptrade', label);
+    accounts = resolved.accounts;
+    ({ lots } = replaceAccountLots(lots, resolved.account.id, holdings, ['FXAIX', 'MSFT']));
+  };
+  sync('Fidelity', { FXAIX: 900, MSFT: 100 });
+  assert.deepStrictEqual(totalsFromLots(lots), { FXAIX: 900, MSFT: 100 });
+  sync('Fidelity + U.S. Bank', { FXAIX: 1000, MSFT: 100 });
+  assert.deepStrictEqual(totalsFromLots(lots), { FXAIX: 1000, MSFT: 100 },
+    'the re-worded sync was added to the old one instead of replacing it');
+});
+
+/* ---------------------------------------------------------------- migration */
+
+
+test('existing share counts survive the move to per-account storage', () => {
+  const migrated = migrateHoldings({ MSFT: 7885.97, FXAIX: 1000 },
+    { at: '2026-01-01T00:00:00Z', source: 'Fidelity' });
+  assert.deepStrictEqual(migrated.accounts, [{ id: 'fidelity', name: 'Fidelity' }]);
+  assert.deepStrictEqual(totalsFromLots(migrated.lots), { MSFT: 7885.97, FXAIX: 1000 });
+});
+
+test('holdings with no recorded source land under a plainly labelled account', () => {
+  const migrated = migrateHoldings({ MSFT: 10 }, { at: null, source: null });
+  assert.strictEqual(migrated.accounts[0].name, 'Manual entry');
+  assert.deepStrictEqual(totalsFromLots(migrated.lots), { MSFT: 10 });
+});
+
+test('a fresh install is not given a phantom account', () => {
+  assert.strictEqual(migrateHoldings({}, {}), null);
+  assert.strictEqual(migrateHoldings(null, null), null);
+  assert.strictEqual(migrateHoldings({ MSFT: 0 }, {}), null);
+});
+
+/* -------------------------------------------------------------- reconciling */
+
+test('an untouched split is left exactly alone', () => {
+  // The normal case on every boot: the flat map is this build's own mirror, so
+  // nothing disagrees and nothing may move.
+  const lots = { FXAIX: { fidelity: 900, 'u-s-bank': 100 }, MSFT: { fidelity: 10 } };
+  const result = reconcileFlatHoldings(lots, { FXAIX: 1000, MSFT: 10 }, 'fidelity');
+  assert.strictEqual(result.changed, 0);
+  assert.deepStrictEqual(result.lots, lots);
+});
+
+test('an edit made by an older build is recovered, not discarded', () => {
+  // An older build knows only the flat map. Overwriting it from the stale lots
+  // would silently throw the edit away.
+  const lots = { FXAIX: { fidelity: 900, 'u-s-bank': 100 }, MSFT: { fidelity: 10 } };
+  const result = reconcileFlatHoldings(lots, { FXAIX: 1000, MSFT: 25 }, 'fidelity');
+  assert.strictEqual(result.changed, 1);
+  assert.deepStrictEqual(totalsFromLots(result.lots), { FXAIX: 1000, MSFT: 25 });
+  assert.deepStrictEqual(result.lots.FXAIX, { fidelity: 900, 'u-s-bank': 100 },
+    'a symbol nobody touched must keep its split');
+});
+
+test('a symbol added by an older build appears', () => {
+  const result = reconcileFlatHoldings({ MSFT: { fidelity: 10 } },
+    { MSFT: 10, FSKAX: 42 }, 'fidelity');
+  assert.deepStrictEqual(totalsFromLots(result.lots), { MSFT: 10, FSKAX: 42 });
+});
+
+test('a symbol deleted by an older build goes away', () => {
+  const result = reconcileFlatHoldings({ MSFT: { fidelity: 10 }, FSKAX: { fidelity: 42 } },
+    { MSFT: 10 }, 'fidelity');
+  assert.deepStrictEqual(totalsFromLots(result.lots), { MSFT: 10 });
+});
+
+test('a recovered edit collapses only the symbol it touched', () => {
+  const lots = { FXAIX: { fidelity: 900, 'u-s-bank': 100 } };
+  const result = reconcileFlatHoldings(lots, { FXAIX: 1200 }, 'fidelity');
+  assert.deepStrictEqual(result.lots.FXAIX, { fidelity: 1200 },
+    'the flat map cannot say which account changed, so one bucket is the honest answer');
+  assert.deepStrictEqual(lots.FXAIX, { fidelity: 900, 'u-s-bank': 100 },
+    'reconcileFlatHoldings must not mutate its input');
+});
+
+/* ------------------------------------------------------------- the scenario */
+
+test('splitting FXAIX across two institutions survives syncing one of them', () => {
+  // The reason this feature exists. Fidelity holds most of the FXAIX and U.S.
+  // Bank holds the rest; syncing Fidelity must not report the total as
+  // whatever Fidelity alone happens to hold.
+  let accounts = [];
+  ({ accounts } = addAccount(accounts, 'Fidelity'));
+  ({ accounts } = addAccount(accounts, 'U.S. Bank'));
+
+  let lots = {};
+  lots = setLot(lots, 'FXAIX', 'fidelity', 900);
+  lots = setLot(lots, 'FXAIX', 'u-s-bank', 100);
+  assert.deepStrictEqual(totalsFromLots(lots), { FXAIX: 1000 });
+
+  // Fidelity reports its own 925 shares after a reinvestment.
+  ({ lots } = replaceAccountLots(lots, 'fidelity', { FXAIX: 925 }, ['FXAIX']));
+  assert.deepStrictEqual(totalsFromLots(lots), { FXAIX: 1025 },
+    'the U.S. Bank shares were lost by a Fidelity sync');
+});

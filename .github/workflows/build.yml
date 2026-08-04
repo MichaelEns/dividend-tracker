@@ -64,6 +64,9 @@ jobs:
       - name: Run service worker tests
         run: node --test tests/sw.test.cjs
 
+      - name: Run account tests
+        run: node --test tests/accounts.test.cjs
+
       - name: Refresh data.json
         run: python build.py --verbose
 

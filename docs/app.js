@@ -9,6 +9,8 @@
 'use strict';
 
 const HOLDINGS_KEY = 'divtracker.holdings.v1';
+const ACCOUNTS_KEY = 'divtracker.accounts.v1';
+const LOTS_KEY = 'divtracker.holdingLots.v1';
 const PREFS_KEY = 'divtracker.prefs.v1';
 const SYNC_META_KEY = 'divtracker.syncMeta.v1';
 const SYNC_KEY_KEY = 'divtracker.syncKey.v1';
@@ -21,8 +23,18 @@ const WORKER_BASE = String(CONFIG.WORKER_BASE || '').replace(/\/+$/, '');
 const state = {
   data: null,
   holdings: {},
+  // Where the shares actually sit: { SYMBOL: { accountId: shares } }. The same
+  // fund can be held at several institutions - FXAIX is split between Fidelity
+  // and U.S. Bank - and each is synced separately, so a single number per
+  // symbol cannot be updated without destroying the other institution's share.
+  // `state.holdings` is the derived total, recomputed from this.
+  lots: {},
+  accounts: [],
   syncMeta: { at: null, source: null },
   syncSources: {},
+  // Appended to the next sync's status line when a brand-new account overlaps
+  // what other accounts already hold, i.e. when the total may have doubled.
+  syncNote: '',
   prefs: { range: 'upcoming', hideProjected: false, symbols: [], drip: false },
   today: new Date(),
   // Test-only clock injection. Production reads the real clock per render, so
@@ -107,12 +119,42 @@ function shareText(value) {
   return value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 }
 
+/** Account names are user-typed and also arrive from the sync worker, and they
+ *  are rendered through innerHTML. */
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function load(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
     return raw ? Object.assign({}, fallback, JSON.parse(raw)) : fallback;
   } catch (err) {
     return fallback;
+  }
+}
+
+/** `load` merges onto an object, which turns a stored array into {0: …}. */
+function loadArray(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+/** Distinguishes "never written" from "written and empty", which the holdings
+ *  migration has to tell apart. */
+function hasStored(key) {
+  try {
+    return localStorage.getItem(key) !== null;
+  } catch (err) {
+    return false;
   }
 }
 
@@ -280,14 +322,291 @@ function recordSource(id, label, via) {
   save(SYNC_SOURCES_KEY, state.syncSources);
 }
 
+/* ------------------------------------------------------------------ accounts */
+
+/** Used before the user has named anything, so there is always somewhere for a
+ *  share count to go. */
+const DEFAULT_ACCOUNT = { id: 'manual-entry', name: 'Manual entry' };
+
+/**
+ * Shares are held per account, because the same fund can sit at more than one
+ * institution: FXAIX is split between Fidelity and U.S. Bank. A single number
+ * per symbol cannot represent that, and worse, syncing either institution
+ * would silently overwrite the other's shares with a smaller number.
+ *
+ * The model is deliberately two flat maps rather than a list of lots:
+ *   accounts: [{ id, name }]              - defined once, shared by every symbol
+ *   lots:     { SYMBOL: { id: shares } }  - one cell per symbol per account
+ *
+ * `state.holdings` remains the derived symbol -> total map so that every
+ * consumer downstream of it - the table, the projections, DRIP - is untouched.
+ */
+
+/** A stable id from a display name. Ids are content-derived so that importing
+ *  "Fidelity" twice reuses one account rather than creating a duplicate. */
+function accountId(name) {
+  const slug = String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'account';
+}
+
+/**
+ * Finds an existing account by name, case- and punctuation-insensitively.
+ *
+ * Only exact-after-slugging matches count: "Fidelity" and "Fidelity
+ * Investments" are *not* treated as the same account, because guessing at
+ * substrings would merge genuinely different institutions. Sync providers must
+ * therefore not be identified by their display name - see `syncAccount`.
+ */
+function findAccount(accounts, name) {
+  const wanted = accountId(name);
+  return (accounts || []).find((a) => a && a.id === wanted) || null;
+}
+
+/**
+ * The account a sync provider owns, creating it on first use.
+ *
+ * Crucially the provider - "plaid", "snaptrade" - and not its display name is
+ * what identifies the bucket. Providers re-word the institution label freely:
+ * SnapTrade reports the brokerage name for one connection but "2 accounts"
+ * once a second is linked, and the Plaid lookup is best-effort and falls back
+ * to "Bank sync" whenever it fails. Keying on the label meant a re-wording
+ * created a *second* bucket, and because each bucket is replaced independently
+ * the stale one was never reconciled - so the position silently doubled. That
+ * is the same class of failure per-account storage exists to prevent, only in
+ * the other direction.
+ *
+ * The label is still used, but only as the display name, and it is updated in
+ * place so the panel keeps up with whatever the provider currently calls it.
+ */
+function syncAccount(accounts, provider, label) {
+  const list = Array.isArray(accounts) ? accounts.slice() : [];
+  const name = String(label || '').trim() || provider;
+
+  const index = list.findIndex((a) => a && a.provider === provider);
+  if (index >= 0) {
+    const existing = list[index];
+    if (existing.name !== name) list[index] = Object.assign({}, existing, { name });
+    return { accounts: list, account: list[index] };
+  }
+
+  // Adopt an account of the same name whoever made it - by hand, by CSV, or
+  // by the other provider. Two rails reporting the same institution are
+  // reporting the same shares, so one bucket is right; forking would
+  // double-count them, which is the failure this whole model exists to stop.
+  const byName = list.findIndex((a) => a && a.id === accountId(name));
+  if (byName >= 0) {
+    list[byName] = Object.assign({}, list[byName], { provider });
+    return { accounts: list, account: list[byName] };
+  }
+
+  const account = { id: uniqueAccountId(list, name), name, provider };
+  list.push(account);
+  return { accounts: list, account, created: true };
+}
+
+/**
+ * Symbols an incoming sync would end up double-counting.
+ *
+ * A brand-new bucket is added to the existing ones, which is right when it is
+ * a genuinely separate institution and wrong when it is the same holdings
+ * arriving under a name this app has not seen before - an aggregator that
+ * reports "Fidelity + U.S. Bank" against hand-made "Fidelity" and "U.S. Bank"
+ * accounts, say. The two cases are indistinguishable from here, so rather than
+ * guess, name the symbols and let the user look.
+ */
+function overlappingSymbols(lots, id, holdings) {
+  return Object.keys(holdings || {})
+    .map((sym) => String(sym).toUpperCase())
+    .filter((sym) => Object.entries((lots || {})[sym] || {})
+      .some(([acc, shares]) => acc !== id && Number(shares) > 0))
+    .sort();
+}
+
+/** Keeps ids unique when two different names slug to the same thing. */
+function uniqueAccountId(accounts, name) {
+  const base = accountId(name);
+  const taken = new Set((accounts || []).map((a) => a && a.id));
+  if (!taken.has(base)) return base;
+  for (let n = 2; n < 1000; n += 1) {
+    if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
+  }
+  return `${base}-${Date.now()}`;
+}
+
+/** Adds an account unless an equivalent one exists; returns { accounts, account, added }. */
+function addAccount(accounts, name) {
+  const list = Array.isArray(accounts) ? accounts.slice() : [];
+  const label = String(name || '').trim();
+  if (!label) return { accounts: list, account: null, added: false };
+  const existing = findAccount(list, label);
+  if (existing) return { accounts: list, account: existing, added: false };
+  const account = { id: accountId(label), name: label };
+  list.push(account);
+  return { accounts: list, account, added: true };
+}
+
+/** Drops an account and every share count filed under it. */
+function removeAccount(accounts, lots, id) {
+  const nextAccounts = (accounts || []).filter((a) => a && a.id !== id);
+  const nextLots = {};
+  Object.entries(lots || {}).forEach(([sym, byAccount]) => {
+    const kept = {};
+    Object.entries(byAccount || {}).forEach(([acc, shares]) => {
+      if (acc !== id) kept[acc] = shares;
+    });
+    if (Object.keys(kept).length) nextLots[sym] = kept;
+  });
+  return { accounts: nextAccounts, lots: nextLots };
+}
+
+/**
+ * Collapses per-account lots into the symbol -> total map the rest of the app
+ * reads. Zero and negative counts are dropped rather than stored, so a symbol
+ * emptied everywhere disappears instead of lingering as a 0 that renders as a
+ * row of "$0.00".
+ */
+function totalsFromLots(lots) {
+  const totals = {};
+  Object.entries(lots || {}).forEach(([sym, byAccount]) => {
+    let sum = 0;
+    Object.values(byAccount || {}).forEach((shares) => {
+      const value = Number(shares);
+      if (Number.isFinite(value) && value > 0) sum += value;
+    });
+    if (sum > 0) totals[sym] = sum;
+  });
+  return totals;
+}
+
+/** Writes one cell, deleting it when the count is empty or not a positive number. */
+function setLot(lots, symbol, id, shares) {
+  const next = {};
+  Object.entries(lots || {}).forEach(([sym, byAccount]) => {
+    next[sym] = Object.assign({}, byAccount);
+  });
+  const value = Number(shares);
+  const bucket = next[symbol] || (next[symbol] = {});
+  if (Number.isFinite(value) && value > 0) bucket[id] = value;
+  else delete bucket[id];
+  if (!Object.keys(bucket).length) delete next[symbol];
+  return next;
+}
+
+/**
+ * Replaces everything one account holds, rather than merging into it.
+ *
+ * Merging is wrong for a sync: if a position was sold at Fidelity, a merge
+ * leaves the stale row behind forever, because "sold" arrives as an absence
+ * and an absence cannot overwrite anything. Replacement is the only reading
+ * under which the number on screen means "what that institution holds today".
+ *
+ * Other accounts are never touched, so syncing Fidelity cannot disturb the
+ * FXAIX shares held at U.S. Bank.
+ */
+function replaceAccountLots(lots, id, holdings, known) {
+  const allowed = known instanceof Set ? known : new Set(known || []);
+  const next = {};
+  Object.entries(lots || {}).forEach(([sym, byAccount]) => {
+    const kept = {};
+    Object.entries(byAccount || {}).forEach(([acc, shares]) => {
+      if (acc !== id) kept[acc] = shares;
+    });
+    if (Object.keys(kept).length) next[sym] = kept;
+  });
+
+  let kept = 0;
+  Object.entries(holdings || {}).forEach(([sym, qty]) => {
+    const upper = String(sym || '').toUpperCase();
+    const value = Number(qty);
+    if (!Number.isFinite(value) || value <= 0) return;
+    if (allowed.size && !allowed.has(upper)) return;
+    (next[upper] || (next[upper] = {}))[id] = value;
+    kept += 1;
+  });
+  return { lots: next, kept };
+}
+
+/**
+ * Seeds the per-account model from the flat map written by earlier versions.
+ *
+ * Everything previously entered goes into a single account named after
+ * whatever last wrote it, which is the honest answer: the old model recorded
+ * one source for the lot as a whole, so that is all that can be recovered.
+ * The user then splits it by hand. Returns null when there is nothing to
+ * migrate, so a fresh install does not get a phantom account.
+ */
+function migrateHoldings(flat, syncMeta) {
+  const entries = Object.entries(flat || {}).filter(([, v]) => Number(v) > 0);
+  if (!entries.length) return null;
+  const name = (syncMeta && syncMeta.source) || 'Manual entry';
+  const account = { id: accountId(name), name };
+  const lots = {};
+  entries.forEach(([sym, shares]) => {
+    lots[String(sym).toUpperCase()] = { [account.id]: Number(shares) };
+  });
+  return { accounts: [account], lots };
+}
+
+/**
+ * Recomputes the derived totals and writes all three keys.
+ *
+ * `state.holdings` is deliberately kept as a plain symbol -> total map so that
+ * everything downstream - the table, projections, DRIP, the empty-state checks
+ * - never learns about accounts. HOLDINGS_KEY is still written so that rolling
+ * back to an earlier build shows the right totals rather than an empty page.
+ */
+function commitLots() {
+  state.holdings = totalsFromLots(state.lots);
+  save(LOTS_KEY, state.lots);
+  save(ACCOUNTS_KEY, state.accounts);
+  save(HOLDINGS_KEY, state.holdings);
+}
+
+/**
+ * Folds edits made by a build that only understands the flat map back in.
+ *
+ * HOLDINGS_KEY is written as a derived mirror so a rollback still shows the
+ * right numbers, but an older build will happily *write* to it, and then the
+ * lots are the stale copy. Overwriting the flat map from stale lots on the
+ * next boot would discard those edits silently, which is the one outcome this
+ * whole model exists to prevent.
+ *
+ * A symbol can only disagree if something outside this build touched it, so
+ * reconciling exactly the symbols that disagree leaves every untouched split
+ * intact. A disagreeing symbol does collapse to one account - the old build
+ * had no way to express a split, so that really is all it knew - but the share
+ * count survives, and a split is far easier to re-enter than a number is to
+ * remember.
+ */
+function reconcileFlatHoldings(lots, flat, fallbackId) {
+  const totals = totalsFromLots(lots);
+  const symbols = new Set(Object.keys(flat || {}).concat(Object.keys(totals)));
+  let next = lots;
+  let changed = 0;
+  symbols.forEach((sym) => {
+    const outside = Number((flat || {})[sym]);
+    const mine = totals[sym];
+    const wanted = Number.isFinite(outside) && outside > 0 ? outside : 0;
+    if (wanted === (mine || 0)) return;
+    // Collapse to one bucket: the flat map cannot say which account changed.
+    Object.keys(next[sym] || {}).forEach((acc) => { next = setLot(next, sym, acc, 0); });
+    if (wanted > 0) next = setLot(next, sym, fallbackId, wanted);
+    changed += 1;
+  });
+  return { lots: next, changed };
+}
+
 /**
  * The most recently updated source, or null.
  *
- * Holdings are stored as one flat symbol -> shares map: `applyHoldings` merges
- * every source into it, so there is no per-institution partition to age
- * separately. Judging each historical source on its own would therefore warn
- * about a CSV imported once in March even though the numbers on screen were
- * typed in an hour ago. Only the newest write describes what is displayed.
+ * Freshness is judged on the newest write rather than per source. Sources are
+ * merged into one displayed set of totals, so a stale Fidelity sync sitting
+ * beside a fresh manual edit still leaves most of the screen trustworthy;
+ * ageing each source separately would warn about a CSV imported once in March
+ * even though every number on screen was typed an hour ago.
  */
 function latestSource(sources) {
   let best = null;
@@ -666,15 +985,47 @@ function renderChips() {
     .join('');
 }
 
+/**
+ * One input per symbol per account, plus a running total.
+ *
+ * A single box per symbol cannot describe a position split across
+ * institutions, and worse, it makes every sync destructive: Fidelity reporting
+ * its own FXAIX would overwrite the U.S. Bank shares with a smaller number
+ * that looks entirely plausible. Showing the accounts side by side with their
+ * sum makes the split visible, and makes a bad sync obvious.
+ *
+ * With one account the totals line is suppressed: repeating "1,000 sh" under a
+ * box that already says 1,000 is noise, and most people only ever have one.
+ */
 function renderHoldingsInputs() {
+  renderAccountList();
   const container = document.getElementById('holdings-inputs');
+  const accounts = state.accounts.length ? state.accounts : [DEFAULT_ACCOUNT];
+  const multi = accounts.length > 1;
+
   container.innerHTML = state.data.symbols
     .map((sym) => {
-      const value = state.holdings[sym.symbol];
+      const byAccount = state.lots[sym.symbol] || {};
+      const total = state.holdings[sym.symbol];
+      const fields = accounts
+        .map((acc) => {
+          const value = byAccount[acc.id];
+          const id = `sh-${sym.symbol}-${acc.id}`;
+          return `<div class="holding-field">
+            <label for="${id}">${multi ? escapeHtml(acc.name) : 'Shares held'}</label>
+            <input id="${id}" type="number" inputmode="decimal" step="0.001" min="0"
+              placeholder="0" data-symbol="${sym.symbol}" data-account="${acc.id}"
+              value="${value != null ? value : ''}" />
+          </div>`;
+        })
+        .join('');
+      const totalLine = multi
+        ? `<div class="holding-total">Total <strong>${shareText(total || 0)} sh</strong></div>`
+        : '';
       return `<div class="holding">
-        <label for="sh-${sym.symbol}">${sym.symbol} — shares held</label>
-        <input id="sh-${sym.symbol}" type="number" inputmode="decimal" step="0.001" min="0"
-          placeholder="0" data-symbol="${sym.symbol}" value="${value != null ? value : ''}" />
+        <div class="holding-symbol">${sym.symbol}</div>
+        <div class="holding-fields">${fields}</div>
+        ${totalLine}
       </div>`;
     })
     .join('');
@@ -683,6 +1034,58 @@ function renderHoldingsInputs() {
   document.getElementById('holdings-hint').textContent = count
     ? `${count} position${count === 1 ? '' : 's'} saved on this device`
     : 'Tap to enter share counts';
+}
+
+/**
+ * Refreshes just the "Total" lines.
+ *
+ * Rebuilding `holdings-inputs` on every keystroke would tear down the input
+ * being typed into and drop focus mid-number, so the totals are patched in
+ * place instead.
+ */
+function updateHoldingTotals() {
+  document.querySelectorAll('#holdings-inputs .holding').forEach((row) => {
+    const input = row.querySelector('input[data-symbol]');
+    const cell = row.querySelector('.holding-total strong');
+    if (!input || !cell) return;
+    cell.textContent = shareText(state.holdings[input.dataset.symbol] || 0) + ' sh';
+  });
+}
+
+/** The shared account list, and the box for adding to it. */
+function renderAccountList() {
+  const list = document.getElementById('account-list');
+  if (!list) return;
+  list.innerHTML = state.accounts
+    .map((acc) => `<li class="account">
+      <span class="account-name">${escapeHtml(acc.name)}</span>
+      <button type="button" class="account-remove" data-account="${acc.id}"
+        aria-label="Remove ${escapeHtml(acc.name)} and its share counts">Remove</button>
+    </li>`)
+    .join('');
+
+  const hint = document.getElementById('account-hint');
+  if (hint) {
+    hint.textContent = state.accounts.length > 1
+      ? 'Each symbol below gets one box per account. Syncing an account replaces '
+        + 'only its own numbers.'
+      : 'Add an account for each institution, then enter what each one holds. '
+        + 'FXAIX split between Fidelity and U.S. Bank needs two.';
+  }
+
+  const select = document.getElementById('csv-account');
+  if (select) {
+    const previous = select.value;
+    const accounts = state.accounts.length ? state.accounts : [DEFAULT_ACCOUNT];
+    select.innerHTML = accounts
+      .map((acc) => `<option value="${acc.id}">${escapeHtml(acc.name)}</option>`)
+      .join('');
+    if (accounts.some((a) => a.id === previous)) select.value = previous;
+  }
+  const wrap = document.getElementById('csv-account-wrap');
+  // With one account there is nothing to choose, and an import can only mean
+  // one thing.
+  if (wrap) wrap.hidden = state.accounts.length < 2;
 }
 
 /**
@@ -855,22 +1258,72 @@ function bindEvents() {
   document.getElementById('holdings-inputs').addEventListener('input', (event) => {
     const input = event.target;
     if (!input.dataset.symbol) return;
-    const value = Number.parseFloat(input.value);
-    if (Number.isFinite(value) && value > 0) state.holdings[input.dataset.symbol] = value;
-    else delete state.holdings[input.dataset.symbol];
-    save(HOLDINGS_KEY, state.holdings);
+    const account = input.dataset.account || DEFAULT_ACCOUNT.id;
+    // Typing into the implicit default account makes it real, so the box the
+    // user just filled in does not vanish on the next render.
+    if (!findAccount(state.accounts, account)) {
+      state.accounts = addAccount(state.accounts, DEFAULT_ACCOUNT.name).accounts;
+    }
+    state.lots = setLot(state.lots, input.dataset.symbol, account,
+      Number.parseFloat(input.value));
+    commitLots();
     markSynced('Manual entry');
     renderSyncPill();
+    updateHoldingTotals();
     document.getElementById('holdings-hint').textContent =
       `${Object.keys(state.holdings).length} position(s) saved on this device`;
     render();
   });
 
+  document.getElementById('add-account').addEventListener('click', () => {
+    const box = document.getElementById('account-name');
+    const name = box.value.trim();
+    if (!name) { setStatus('Give the account a name first.', 'error'); return; }
+    const result = addAccount(state.accounts, name);
+    if (!result.added) {
+      setStatus(`“${result.account.name}” is already on the list.`, 'error');
+      return;
+    }
+    state.accounts = result.accounts;
+    box.value = '';
+    commitLots();
+    renderHoldingsInputs();
+    setStatus(`Added ${result.account.name}. Enter what it holds below.`, 'ok');
+  });
+
+  document.getElementById('account-name').addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    document.getElementById('add-account').click();
+  });
+
+  document.getElementById('account-list').addEventListener('click', (event) => {
+    const button = event.target.closest('.account-remove');
+    if (!button) return;
+    const account = findAccount(state.accounts, button.dataset.account);
+    const held = Object.values(state.lots)
+      .filter((byAccount) => Number(byAccount[button.dataset.account]) > 0).length;
+    if (held && !window.confirm(
+      `Remove ${account ? account.name : 'this account'} and the ${held} share `
+      + 'count(s) filed under it? Other accounts are not affected.')) return;
+    const next = removeAccount(state.accounts, state.lots, button.dataset.account);
+    state.accounts = next.accounts;
+    state.lots = next.lots;
+    commitLots();
+    renderHoldingsInputs();
+    setStatus(`Removed ${account ? account.name : 'the account'}.`, 'ok');
+    render();
+  });
+
   document.getElementById('clear-holdings').addEventListener('click', () => {
     state.holdings = {};
+    state.lots = {};
+    state.accounts = [];
     state.syncMeta = { at: null, source: null };
     state.syncSources = {};
     save(HOLDINGS_KEY, state.holdings);
+    save(LOTS_KEY, state.lots);
+    save(ACCOUNTS_KEY, state.accounts);
     save(SYNC_META_KEY, state.syncMeta);
     save(SYNC_SOURCES_KEY, state.syncSources);
     renderHoldingsInputs();
@@ -888,12 +1341,27 @@ function bindEvents() {
       try {
         const known = state.data.symbols.map((s) => s.symbol);
         const found = extractHoldings(String(reader.result), known);
-        Object.assign(state.holdings, found);
-        save(HOLDINGS_KEY, state.holdings);
+        // A positions export is the whole of what that institution holds, so
+        // it replaces that account rather than merging into it - otherwise
+        // anything sold stays on screen forever. Only the chosen account is
+        // touched; the same fund held elsewhere is left alone.
+        const select = document.getElementById('csv-account');
+        const target = (select && select.value) || DEFAULT_ACCOUNT.id;
+        const account = findAccount(state.accounts, target)
+          || (state.accounts.length ? state.accounts[0] : DEFAULT_ACCOUNT);
+        const result = replaceAccountLots(state.lots, account.id, found, known);
+        if (result.kept === 0) {
+          setStatus('No tracked tickers in that file, so nothing was changed. '
+            + `Looked for ${known.join(', ')}.`, 'error');
+          return;
+        }
+        state.accounts = addAccount(state.accounts, account.name).accounts;
+        state.lots = result.lots;
+        commitLots();
         markSynced(`CSV import — ${file.name}`);
         renderHoldingsInputs();
         renderSyncPill();
-        setStatus(`Imported ${Object.keys(found).length} position(s): `
+        setStatus(`Imported ${result.kept} position(s) into ${account.name}: `
           + Object.entries(found).map(([s, q]) => `${s} ${shareText(q)}`).join(', ')
           + '. Nothing was uploaded.', 'ok');
         render();
@@ -1048,25 +1516,48 @@ async function workerPost(path, body, key) {
   return payload || {};
 }
 
-/* Applies a {SYMBOL: shares} map, keeping only tracked tickers. */
-function applyHoldings(holdings, source) {
+/**
+ * Files a {SYMBOL: shares} map under the account owned by `provider`, keeping
+ * only tracked tickers.
+ *
+ * The account is created on first sight, so syncing does not require setting
+ * the institution up by hand first, and it is identified by the provider - a
+ * stable string this code chooses - rather than by whatever label the provider
+ * happens to print. See `syncAccount` for why that matters.
+ *
+ * It *replaces* that account's holdings rather than merging: a position sold
+ * at Fidelity arrives as an absence, and an absence cannot overwrite anything,
+ * so a merge would leave the sold row on screen forever. Every other account
+ * is left untouched, which is the point - syncing Fidelity must not disturb
+ * the FXAIX shares held at U.S. Bank.
+ *
+ * Returns the number of positions kept; 0 means nothing was written at all, so
+ * a CSV with the wrong column headings cannot empty a good account.
+ */
+function applyHoldings(holdings, source, provider) {
   const known = new Set(state.data.symbols.map((s) => s.symbol));
-  let kept = 0;
-  Object.entries(holdings).forEach(([sym, qty]) => {
-    const upper = String(sym || '').toUpperCase();
-    const value = Number(qty);
-    if (!Number.isFinite(value) || value <= 0) return;
-    if (!known.has(upper)) return;
-    state.holdings[upper] = value;
-    kept += 1;
-  });
-  if (kept === 0) return 0;
-  save(HOLDINGS_KEY, state.holdings);
+  const label = String(source || '').trim() || 'Manual entry';
+  const resolved = syncAccount(state.accounts, provider || accountId(label), label);
+  const probe = replaceAccountLots(state.lots, resolved.account.id, holdings, known);
+  if (probe.kept === 0) return 0;
+
+  const overlap = resolved.created
+    ? overlappingSymbols(state.lots, resolved.account.id, holdings).filter((s) => known.has(s))
+    : [];
+  state.syncNote = overlap.length
+    ? ` “${resolved.account.name}” is new, so its ${overlap.join(', ')} shares are being `
+      + 'added to what your other accounts already hold. If that is the same money '
+      + 'reported twice, remove the duplicate under Accounts.'
+    : '';
+
+  state.accounts = resolved.accounts;
+  state.lots = probe.lots;
+  commitLots();
   markSynced(source);
   renderHoldingsInputs();
   renderSyncPill();
   render();
-  return kept;
+  return probe.kept;
 }
 
 async function syncFromBank() {
@@ -1098,12 +1589,13 @@ async function syncFromBank() {
       const holdings = payload && payload.holdings;
       if (!holdings || typeof holdings !== 'object') throw new Error('The worker returned no holdings.');
       const source = payload.institution || status.institution || 'Bank sync';
-      const kept = applyHoldings(holdings, source);
+      const kept = applyHoldings(holdings, source, 'plaid');
       if (kept === 0) {
         setStatus(`No tracked symbols returned from ${source}. `
           + `Held ${Object.keys(holdings).length} position(s) but none matched configured tickers.`, 'error');
       } else {
-        setStatus(`Refreshed ${kept} position(s) from ${source}. No new bank sign-in needed.`, 'ok');
+        setStatus(`Refreshed ${kept} position(s) from ${source}. No new bank sign-in needed.`
+          + state.syncNote, 'ok');
       }
       restore();
       return;
@@ -1132,7 +1624,7 @@ async function syncFromBank() {
           const source = payload.institution
             || (metadata && metadata.institution && metadata.institution.name)
             || 'Bank sync';
-          const kept = applyHoldings(holdings, source);
+          const kept = applyHoldings(holdings, source, 'plaid');
           if (kept === 0) {
             setStatus(`No tracked symbols returned from ${source}. `
               + `Held ${Object.keys(holdings).length} positions but none matched configured tickers.`, 'error');
@@ -1140,8 +1632,8 @@ async function syncFromBank() {
             return;
           }
           setStatus(payload.persisted
-            ? `Synced ${kept} position(s) from ${source}. Connection saved, so future syncs skip the bank sign-in.`
-            : `Synced ${kept} position(s) from ${source}. Access token discarded (no KV bound).`, 'ok');
+            ? `Synced ${kept} position(s) from ${source}. Connection saved, so future syncs skip the bank sign-in.${state.syncNote}`
+            : `Synced ${kept} position(s) from ${source}. Access token discarded (no KV bound).${state.syncNote}`, 'ok');
         } catch (err) {
           setStatus('Sync failed: ' + err.message, 'error');
         } finally {
@@ -1230,13 +1722,14 @@ async function syncFromSnaptrade() {
 
     const holdings = payload.holdings || {};
     const source = payload.institution || 'SnapTrade';
-    const kept = applyHoldings(holdings, source);
+    const kept = applyHoldings(holdings, source, 'snaptrade');
     if (kept === 0) {
       setStatus(`No tracked symbols returned from ${source}. `
         + `Read ${Object.keys(holdings).length} position(s) across ${payload.accounts} account(s) `
         + `but none matched configured tickers.`, 'error');
     } else {
-      setStatus(`Synced ${kept} position(s) from ${source} across ${payload.accounts} account(s).`, 'ok');
+      setStatus(`Synced ${kept} position(s) from ${source} across ${payload.accounts} account(s).`
+        + state.syncNote, 'ok');
     }
   } catch (err) {
     setStatus('SnapTrade sync failed: ' + err.message, 'error');
@@ -1472,6 +1965,39 @@ async function init() {
   state.syncSources = migrateSyncMeta(state.syncMeta, load(SYNC_SOURCES_KEY, {}));
   save(SYNC_SOURCES_KEY, state.syncSources);
 
+  state.accounts = loadArray(ACCOUNTS_KEY);
+  state.lots = load(LOTS_KEY, {});
+  // Gate on the key being *absent*, not on it being empty. An empty object is
+  // a real state - the user pressed Clear - and re-running the migration would
+  // resurrect whatever an older build left behind in the flat map.
+  const migrated = hasStored(LOTS_KEY)
+    ? null
+    : migrateHoldings(state.holdings, state.syncMeta);
+  if (migrated) {
+    // Union rather than choose: an account list can already exist without any
+    // lots, and dropping the migrated account would leave its shares filed
+    // under an id with no input box - counted in the totals but impossible to
+    // edit or remove.
+    state.accounts = migrated.accounts.reduce(
+      (list, account) => addAccount(list, account.name).accounts, state.accounts);
+    state.lots = migrated.lots;
+    commitLots();
+  } else {
+    // Pick up anything an older build wrote straight into the flat map, then
+    // refresh that map from the lots so the rollback copy never goes stale.
+    if (hasStored(HOLDINGS_KEY)) {
+      const fallback = (state.accounts[0] || DEFAULT_ACCOUNT).id;
+      const reconciled = reconcileFlatHoldings(state.lots, state.holdings, fallback);
+      if (reconciled.changed) {
+        state.lots = reconciled.lots;
+        state.accounts = addAccount(state.accounts,
+          (state.accounts[0] || DEFAULT_ACCOUNT).name).accounts;
+      }
+    }
+    if (hasStored(LOTS_KEY) || Object.keys(state.lots).length) commitLots();
+    else state.holdings = totalsFromLots(state.lots);
+  }
+
   const syncBtn = document.getElementById('sync-bank');
   if (syncBtn) syncBtn.hidden = !WORKER_BASE;
 
@@ -1569,5 +2095,17 @@ if (typeof module !== 'undefined' && module.exports) {
     parseGeneratedAt,
     describeAgeHours,
     latestSource,
+    accountId,
+    findAccount,
+    addAccount,
+    syncAccount,
+    uniqueAccountId,
+    overlappingSymbols,
+    reconcileFlatHoldings,
+    removeAccount,
+    totalsFromLots,
+    setLot,
+    replaceAccountLots,
+    migrateHoldings,
   };
 }

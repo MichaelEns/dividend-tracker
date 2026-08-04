@@ -45,6 +45,17 @@
         local storage. They are never uploaded, never sent to the server and are not part of the
         published page.
       </p>
+      <div class="accounts">
+        <h3 class="accounts-title">Accounts</h3>
+        <p class="hint" id="account-hint"></p>
+        <ul class="account-list" id="account-list"></ul>
+        <div class="account-add">
+          <label class="sr-only" for="account-name">New account name</label>
+          <input type="text" id="account-name" placeholder="Fidelity" autocomplete="off"
+            maxlength="40" />
+          <button type="button" class="ghost" id="add-account">Add account</button>
+        </div>
+      </div>
       <div id="holdings-inputs" class="holdings-grid"></div>
       <div class="holdings-actions">
         <button type="button" class="primary" id="sync-bank" hidden>
@@ -57,6 +68,10 @@
           <input type="file" id="csv-input" accept=".csv,text/csv" hidden />
         </label>
         <button type="button" class="ghost" id="clear-holdings">Clear</button>
+      </div>
+      <div class="csv-account" id="csv-account-wrap" hidden>
+        <label for="csv-account">Import replaces everything in</label>
+        <select id="csv-account"></select>
       </div>
       <p class="hint" id="sync-status" hidden></p>
       <p class="hint" id="csv-status">
