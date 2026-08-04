@@ -184,8 +184,43 @@ async function main() {
     const chips = JSON.parse(chipFiltered.result.value);
     assert.deepStrictEqual(chips.symbols, ['FSKAX'], 'chip filter did not scope the table');
 
+    // Drive the real CSV import path with a Fidelity-shaped export.
+    const csvImport = await rpc(ws, id++, 'Runtime.evaluate', {
+      expression: `(async () => {
+        document.querySelector('.chip[data-symbol=""]').click();
+        const csv = [
+          '"Account Number","Account Name","Symbol","Description","Quantity","Last Price"',
+          '"Z1","INDIVIDUAL","MSFT","MICROSOFT CORP","12.000","$495.76"',
+          '"Z1","INDIVIDUAL","FXAIX","FIDELITY 500 INDEX FUND","3.500","$264.23"',
+          '"Z2","ROTH IRA","MSFT","MICROSOFT CORP","8.000","$495.76"',
+          '"Z1","INDIVIDUAL","SPAXX**","MONEY MARKET","1,000.00","$1.00"'
+        ].join('\\r\\n');
+        const file = new File([csv], 'Portfolio_Positions.csv', { type: 'text/csv' });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        const input = document.getElementById('csv-input');
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change'));
+        await new Promise(r => setTimeout(r, 600));
+        return JSON.stringify({
+          status: document.getElementById('sync-status').textContent,
+          stored: JSON.parse(localStorage.getItem('divtracker.holdings.v1') || '{}'),
+          msftShares: document.getElementById('sh-MSFT').value,
+        });
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    const imported = JSON.parse(csvImport.result.value);
+    assert.strictEqual(imported.stored.MSFT, 20, 'MSFT should sum both accounts (12 + 8)');
+    assert.strictEqual(imported.stored.FXAIX, 3.5, 'FXAIX quantity wrong');
+    assert.ok(!('SPAXX' in imported.stored), 'money-market row must be ignored');
+    assert.strictEqual(imported.msftShares, '20', 'input did not refresh after import');
+    assert.match(imported.status, /Imported 2 position/, 'import status not shown: ' + imported.status);
+
     console.log('\nfilters: history=' + hist.paid + ' paid rows, confirmed-only='
       + confirmed.total + ' rows, chip filter OK');
+    console.log('csv import: ' + imported.status);
     console.log('\nSMOKE TEST PASSED');
   } finally {
     if (ws) ws.close();
