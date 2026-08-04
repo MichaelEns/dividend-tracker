@@ -5,3 +5,8 @@ __pycache__/
 node_modules/
 .wrangler/
 docs/data.json.tmp
+
+# Local secrets for `wrangler dev`. Real credentials live here and in
+# `wrangler secret put` on the deployed worker - never in tracked files.
+.dev.vars
+.dev.vars.*

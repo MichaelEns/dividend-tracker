@@ -1560,6 +1560,32 @@ function applyHoldings(holdings, source, provider) {
   return probe.kept;
 }
 
+/**
+ * Explain a sync that succeeded but changed nothing.
+ *
+ * "none matched configured tickers" states the outcome and hides the cause.
+ * The two facts that locate the problem are what the institution reported and
+ * what this page tracks: if they disagree because the account genuinely holds
+ * nothing tracked, that is fine and final; if they disagree because a ticker
+ * arrived spelled differently, seeing both lists side by side is the only way
+ * to notice. Naming them also makes a sandbox credential obvious immediately -
+ * Plaid's test banks return ACHN and BTC, never your real positions.
+ */
+function unmatchedMessage(holdings, source, tracked, context) {
+  const found = Object.keys(holdings || {}).sort();
+  const shown = found.slice(0, 6).join(', ');
+  const rest = found.length > 6 ? ` and ${found.length - 6} more` : '';
+  return `Synced ${source}${context ? ' ' + context : ''}, but none of its `
+    + `${found.length} position(s) matched the symbols this page tracks `
+    + `(${(tracked || []).join(', ') || 'none configured'}). `
+    + (found.length ? `It reported: ${shown}${rest}. ` : '')
+    + 'Nothing was changed.';
+}
+
+function trackedSymbols() {
+  return state.data.symbols.map((s) => s.symbol);
+}
+
 async function syncFromBank() {
   if (!requireWorker('Bank sync')) return;
   const button = document.getElementById('sync-bank');
@@ -1591,8 +1617,7 @@ async function syncFromBank() {
       const source = payload.institution || status.institution || 'Bank sync';
       const kept = applyHoldings(holdings, source, 'plaid');
       if (kept === 0) {
-        setStatus(`No tracked symbols returned from ${source}. `
-          + `Held ${Object.keys(holdings).length} position(s) but none matched configured tickers.`, 'error');
+        setStatus(unmatchedMessage(holdings, source, trackedSymbols()), 'error');
       } else {
         setStatus(`Refreshed ${kept} position(s) from ${source}. No new bank sign-in needed.`
           + state.syncNote, 'ok');
@@ -1626,8 +1651,7 @@ async function syncFromBank() {
             || 'Bank sync';
           const kept = applyHoldings(holdings, source, 'plaid');
           if (kept === 0) {
-            setStatus(`No tracked symbols returned from ${source}. `
-              + `Held ${Object.keys(holdings).length} positions but none matched configured tickers.`, 'error');
+            setStatus(unmatchedMessage(holdings, source, trackedSymbols()), 'error');
             restore();
             return;
           }
@@ -1724,9 +1748,8 @@ async function syncFromSnaptrade() {
     const source = payload.institution || 'SnapTrade';
     const kept = applyHoldings(holdings, source, 'snaptrade');
     if (kept === 0) {
-      setStatus(`No tracked symbols returned from ${source}. `
-        + `Read ${Object.keys(holdings).length} position(s) across ${payload.accounts} account(s) `
-        + `but none matched configured tickers.`, 'error');
+      setStatus(unmatchedMessage(holdings, source, trackedSymbols(),
+        `across ${payload.accounts} account(s)`), 'error');
     } else {
       setStatus(`Synced ${kept} position(s) from ${source} across ${payload.accounts} account(s).`
         + state.syncNote, 'ok');
@@ -2101,6 +2124,7 @@ if (typeof module !== 'undefined' && module.exports) {
     syncAccount,
     uniqueAccountId,
     overlappingSymbols,
+    unmatchedMessage,
     reconcileFlatHoldings,
     removeAccount,
     totalsFromLots,

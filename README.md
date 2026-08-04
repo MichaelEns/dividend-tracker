@@ -115,42 +115,83 @@ secret is unset, every request is rejected rather than allowed.
   (`sandbox`, `development`, or `production`). Sandbox is free with fake
   credentials; production requires Plaid approval for individuals.
 
-> **Fidelity / Charles Schwab:** Plaid calls these out as needing explicit
-> institution access approval once you move to a paid plan. Trial covers "most
-> OAuth institutions" but not guaranteed. Confirm your broker actually links
-> before relying on this path.
+> **Sandbox credentials never return your real holdings.** Plaid's Sandbox is a
+> closed set of fake institutions — First Platypus Bank, Tartan Bank — reached
+> with `user_good` / `pass_good`. It cannot reach Fidelity or any other real
+> bank, by design, no matter what you type. A sandbox sync returns holdings
+> like `ACHN`, `EWZ` and `BTC`, so the page will correctly report that nothing
+> it tracks came back. That is the plumbing working, not failing. Sandbox is
+> for proving the wiring; only `PLAID_ENV=production` with a production secret
+> touches real money.
+
+> **Fidelity via Plaid is doubtful.** Plaid's own docs say Pay-as-you-go
+> customers must request Fidelity access by support ticket, and several
+> third-party reports say the integration is no longer available at all. This
+> could not be confirmed either way from public sources. If Fidelity is the
+> reason you are here, prefer SnapTrade — see
+> [Alternative sync provider](#alternative-sync-provider-snaptrade) — which
+> connects to both Fidelity and U.S. Bank over Fidelity Access OAuth, is free
+> for personal use, and issues API keys immediately with no approval queue.
 
 ### 2. Deploy the Worker
 
 ```powershell
 cd worker
 npm install
+node setup.mjs
+```
+
+`setup.mjs` logs in, creates the KV namespace and writes its id into
+`wrangler.toml`, uploads every secret, deploys, and prints the URL to paste
+into `docs/config.js`. It reuses anything already in `.dev.vars`, so the values
+you tested locally are the ones that get deployed.
+
+**Signing in from a phone.** `wrangler login` redirects to
+`http://localhost:8976`, a listener that only exists on the machine running
+wrangler, so the browser completing it must be that machine. To authenticate
+from a phone instead, create an API token — no callback, so any device works:
+dash.cloudflare.com → My Profile → API Tokens → Create Token → **Edit
+Cloudflare Workers** template (it covers Workers Scripts *and* Workers KV).
+Then:
+
+```powershell
+$env:CLOUDFLARE_API_TOKEN = "<token>"
+node setup.mjs
+```
+
+<details>
+<summary>The same thing by hand</summary>
+
+```powershell
 npx wrangler login
-
-# Storage for the Plaid access token, so syncing never burns a Trial slot.
 npx wrangler kv namespace create TOKENS
-# Paste the printed id into worker/wrangler.toml and uncomment the
-# [[kv_namespaces]] block, then continue:
-
-npx wrangler secret put PLAID_CLIENT_ID       # paste your client_id
-npx wrangler secret put PLAID_SECRET          # paste the secret for the env you use
-npx wrangler secret put PLAID_ENV             # sandbox | development | production
-npx wrangler secret put ALLOWED_ORIGINS       # https://<you>.github.io  (comma-separate to add more)
+# paste the printed id into wrangler.toml, uncomment [[kv_namespaces]], then:
+npx wrangler secret put PLAID_CLIENT_ID
+npx wrangler secret put PLAID_SECRET
+npx wrangler secret put PLAID_ENV             # sandbox | production
+npx wrangler secret put ALLOWED_ORIGINS       # https://<you>.github.io
 npx wrangler secret put SYNC_PASSPHRASE       # long random string; required
 npx wrangler deploy
 ```
 
-Generate a passphrase with:
-
-```powershell
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
+Generate a passphrase with
+`python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+</details>
 
 If you skip the KV namespace the Worker still runs, but falls back to the old
 one-off remove-after-read behaviour — which is capped at 10 syncs forever on a
 Trial plan.
 
-Wrangler will print the Worker URL, e.g. `https://divtracker-plaid.<you>.workers.dev`.
+Wrangler prints the Worker URL, e.g. `https://divtracker-plaid.<you>.workers.dev`.
+
+#### Testing it without deploying
+
+`.dev.vars` (gitignored) holds the same keys for local runs:
+
+```powershell
+cd worker
+npx wrangler dev --port 8787 --local
+```
 
 ### 3. Point the page at the Worker
 
@@ -418,13 +459,27 @@ What differs is the terms:
 | | Plaid Trial | SnapTrade Personal |
 | --- | --- | --- |
 | Cost | Free | Free |
-| Hard limit | **10 Items, lifetime, non-refundable** | ~20 connections |
+| Hard limit | **10 Items, lifetime, non-refundable** | none documented for Personal |
+| Getting keys | Trial plan application, identity verification | Sign up, verify email, enable 2FA — immediate |
 | Built for | Banks; investments is a secondary product | Brokerages |
+| Fidelity | Doubtful; support ticket at best | Supported, Fidelity Access OAuth |
+| U.S. Bank | Supported | Supported (marked Beta) |
 | Token to store | Yes — an access token per Item | **None** |
 
 The last row is why the SnapTrade path is simpler: a Personal API key
 identifies the user, so there is no per-connection token for the worker to
 hold, no KV namespace, and nothing to disconnect.
+
+**This is the recommended path for this repo**, because it is the only one of
+the two confirmed to reach both institutions this tracker cares about, and the
+only one that hands an individual working keys in about five minutes.
+
+1. Sign up at <https://dashboard.snaptrade.com/signup>.
+2. Verify your email and turn on two-factor authentication (required before a
+   key is issued).
+3. Create a **Personal** key on the API Key page — not a Commercial one.
+   Personal means "reading my own accounts" and is free; Commercial is billed
+   per connected user and needs KYC for a production key.
 
 ```powershell
 cd worker
@@ -433,9 +488,15 @@ npx wrangler secret put SNAPTRADE_CONSUMER_KEY   # Personal consumer key
 npx wrangler deploy
 ```
 
-Get both from <https://snaptrade.com/personal> → Dashboard. A **Sync via
-SnapTrade** button then appears; the first click opens SnapTrade's Connection
-Portal in a new tab, and after linking your brokerage you press it again.
+A **Sync via SnapTrade** button then appears; the first click opens SnapTrade's
+Connection Portal in a new tab, and after linking your brokerage you press it
+again. Both integrations are read-only — neither can place a trade.
+
+One caveat worth knowing before you build on it: SnapTrade's developer FAQ
+lists Fidelity among brokers that "require an application to enable the
+integration". That FAQ entry is written for Commercial keys and appears not to
+apply to Personal ones, but it could not be confirmed from the public docs.
+Link Fidelity through the portal early, before relying on it.
 
 Requests are signed per
 [SnapTrade's spec](https://docs.snaptrade.com/docs/request-signatures):
@@ -487,6 +548,30 @@ panel:
 cd docs; Start-Process python -ArgumentList '-m','http.server','8765'
 cd ..; node tests\smoke.cjs "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 ```
+
+### Live sync verification
+
+`tests/live-sync.cjs` drives the whole chain for real — real button, real
+`fetch`, real worker, real Plaid API — and is the only test that proves the
+page and the worker agree. It is deliberately outside CI because it needs live
+credentials. The one thing it stubs is `window.Plaid`: that widget is Plaid's
+hosted UI, and automating its iframe would test their code, not this repo.
+Everything from `onSuccess` onward is genuine.
+
+```powershell
+cd worker; npx wrangler dev --port 8787 --local     # reads .dev.vars
+# then, in another shell:
+$env:PLAID_CLIENT_ID="..."; $env:PLAID_SECRET="..."
+node tests\live-sync.cjs "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" <passphrase>
+```
+
+It runs two scenarios against Plaid Sandbox. The first uses the stock test
+user, whose holdings deliberately match nothing this page tracks, and asserts
+the page says so clearly and writes nothing. The second builds a
+[custom Sandbox user](https://plaid.com/docs/sandbox/user-custom/) holding
+MSFT, FXAIX and an untracked NVDA, against a hand-entered U.S. Bank position,
+and asserts the flagship guarantee end to end: the broker's shares land, NVDA
+is ignored, and the U.S. Bank shares are still there afterwards.
 
 ## Privacy
 

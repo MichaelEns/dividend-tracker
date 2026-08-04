@@ -22,6 +22,7 @@ const {
   syncAccount,
   uniqueAccountId,
   overlappingSymbols,
+  unmatchedMessage,
   reconcileFlatHoldings,
   removeAccount,
   totalsFromLots,
@@ -360,4 +361,51 @@ test('splitting FXAIX across two institutions survives syncing one of them', () 
   ({ lots } = replaceAccountLots(lots, 'fidelity', { FXAIX: 925 }, ['FXAIX']));
   assert.deepStrictEqual(totalsFromLots(lots), { FXAIX: 1025 },
     'the U.S. Bank shares were lost by a Fidelity sync');
+});
+
+/* ------------------------------------------------ explaining an empty sync */
+
+const TRACKED = ['MSFT', 'FXAIX', 'FSKAX'];
+
+test('an empty sync names both what arrived and what is tracked', () => {
+  const msg = unmatchedMessage({ NVDA: 5, VTI: 10 }, 'Fidelity', TRACKED);
+  assert.match(msg, /MSFT, FXAIX, FSKAX/, 'the tracked symbols are not named');
+  assert.match(msg, /NVDA, VTI/, 'the symbols that actually arrived are not named');
+  assert.match(msg, /Fidelity/);
+  assert.match(msg, /Nothing was changed/, 'it must say the page was left alone');
+});
+
+test('the real Plaid sandbox payload explains itself', () => {
+  // Verbatim from sandbox First Platypus Bank via /investments/holdings/get.
+  // Sandbox credentials can only ever reach Plaid's fake banks, so this is the
+  // message the page shows for every sandbox sync - it has to be informative
+  // rather than look like a failure.
+  const sandbox = {
+    ACHN: 1, DBLTX: 2, NFLX180201C00355000: 10000, BTC: 0.00293644,
+    EWZ: 5, MIPTX: 23.567, NHX105509: 100.05, CAMYX: 75.75, SBSI: 213,
+  };
+  const msg = unmatchedMessage(sandbox, 'First Platypus Bank', TRACKED);
+  assert.match(msg, /9 position\(s\)/, 'the count of what arrived is wrong');
+  assert.match(msg, /MSFT, FXAIX, FSKAX/);
+  assert.match(msg, /and 3 more/, 'a long list must be truncated with a count');
+  assert.ok(msg.length < 320, 'the status line must stay readable: ' + msg.length);
+});
+
+test('a long list is truncated but a short one is shown whole', () => {
+  const six = { AAA: 1, BBB: 1, CCC: 1, DDD: 1, EEE: 1, FFF: 1 };
+  assert.doesNotMatch(unmatchedMessage(six, 'X', TRACKED), /more/,
+    'exactly six symbols should not be truncated');
+  const seven = { ...six, GGG: 1 };
+  assert.match(unmatchedMessage(seven, 'X', TRACKED), /and 1 more/);
+});
+
+test('an account holding nothing at all does not claim to have reported symbols', () => {
+  const msg = unmatchedMessage({}, 'Empty Brokerage', TRACKED);
+  assert.match(msg, /0 position\(s\)/);
+  assert.doesNotMatch(msg, /It reported/, 'there was nothing to report');
+});
+
+test('the SnapTrade context is folded into the sentence', () => {
+  const msg = unmatchedMessage({ NVDA: 1 }, 'SnapTrade', TRACKED, 'across 2 account(s)');
+  assert.match(msg, /SnapTrade across 2 account\(s\), but none/);
 });
