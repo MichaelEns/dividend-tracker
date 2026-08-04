@@ -12,6 +12,6 @@
  *   is a natural threshold because that is the cadence of most dividends here.
  */
 window.DIVTRACKER_CONFIG = {
-  WORKER_BASE: "",
+  WORKER_BASE: "https://divtracker-plaid.michaelens.workers.dev",
   QUARTER_DAYS: 92,
 };

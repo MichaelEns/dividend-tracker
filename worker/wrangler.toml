@@ -3,6 +3,11 @@ main = "src/index.js"
 compatibility_date = "2025-06-01"
 workers_dev = true
 
+# Every extra hostname is another way to reach a worker that holds a brokerage
+# access token. The origin and passphrase gates apply there too, but a
+# per-version preview URL buys nothing here and is one more thing to remember.
+preview_urls = false
+
 # Configure via `wrangler secret put`:
 #   PLAID_CLIENT_ID
 #   PLAID_SECRET
@@ -28,10 +33,10 @@ workers_dev = true
 #
 # then paste the printed id below and uncomment the block. Without it the
 # worker still works, but falls back to one-off remove-after-read.
-#
-# [[kv_namespaces]]
-# binding = "TOKENS"
-# id = "<paste-the-id-from-wrangler-kv-namespace-create>"
+
+[[kv_namespaces]]
+binding = "TOKENS"
+id = "51d8fcb24b6d44e7b4e980a25e532a89"
 
 [vars]
 PLAID_PRODUCTS = "investments"
