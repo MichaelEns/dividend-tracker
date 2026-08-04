@@ -9,7 +9,7 @@
  * would otherwise keep serving the old app.js indefinitely — which would have
  * quietly suppressed the staleness warnings this version adds.
  */
-const CACHE = 'divtracker-v3';
+const CACHE = 'divtracker-v4';
 const SHELL = [
   './',
   './index.html',

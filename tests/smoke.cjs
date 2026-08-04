@@ -408,7 +408,13 @@ async function main() {
     // Crossing the breakpoint while nothing matches the filters used to leave
     // the old footer behind, still summarising rows that are gone and still
     // spanning five columns in a three-column table.
-    await rpc(ws, id++, 'Emulation.clearDeviceMetricsOverride', {});
+    //
+    // Set an explicit wide viewport rather than clearing the override: clearing
+    // hands the page back to whatever size the headless window happens to be,
+    // which is not the same on every machine and made this assertion flaky.
+    await rpc(ws, id++, 'Emulation.setDeviceMetricsOverride', {
+      width: 1280, height: 900, deviceScaleFactor: 0, mobile: false,
+    });
     await new Promise((r) => setTimeout(r, 300));
     const emptyFoot = await rpc(ws, id++, 'Runtime.evaluate', {
       expression: `(() => {
@@ -426,12 +432,13 @@ async function main() {
           emptyShown: !document.getElementById('empty-state').hidden,
           rows: document.querySelectorAll('#dist-body tr.dist-row').length,
         };
-        return JSON.stringify({ wide, emptied });
+        return JSON.stringify({ wide, emptied, width: window.innerWidth });
       })()`,
       returnByValue: true,
     });
     const ef = JSON.parse(emptyFoot.result.value);
-    assert.strictEqual(ef.wide, 5, 'desktop footer should span five columns');
+    assert.strictEqual(ef.wide, 5,
+      'desktop footer should span five columns (viewport was ' + ef.width + 'px)');
     assert.strictEqual(ef.emptied.rows, 0, 'filter should have emptied the table');
     assert.ok(ef.emptied.emptyShown, 'empty state should be visible');
     assert.strictEqual(ef.emptied.foot, null,
