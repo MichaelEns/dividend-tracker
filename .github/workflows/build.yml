@@ -52,6 +52,9 @@ jobs:
       - name: Run worker tests
         run: node --test tests/worker.test.mjs
 
+      - name: Run SnapTrade tests
+        run: node --test tests/snaptrade.test.mjs
+
       - name: Refresh data.json
         run: python build.py --verbose
 

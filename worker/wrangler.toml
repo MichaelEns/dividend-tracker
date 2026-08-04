@@ -10,6 +10,12 @@ workers_dev = true
 #   ALLOWED_ORIGINS          (comma-separated, e.g. https://<you>.github.io)
 #   SYNC_PASSPHRASE          (long random string; REQUIRED - endpoints fail closed without it)
 #
+# Optional alternative provider. SnapTrade Personal is free and has no
+# equivalent of Plaid's 10-Items-for-the-lifetime-of-the-account cap. Configure
+# either provider, or both; the page shows whichever the worker reports.
+#   SNAPTRADE_CLIENT_ID      (Personal client ID from the SnapTrade dashboard)
+#   SNAPTRADE_CONSUMER_KEY   (Personal consumer key; signs every request)
+#
 # No public/secret values live in this file.
 #
 # Token storage. Plaid's free Trial plan allows 10 Production Items for the

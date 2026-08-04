@@ -180,6 +180,53 @@ The pill next to "Last updated" starts at day 0 = green
 dividends in this tracker — so a red pill means it's plausible your share count
 is now stale.
 
+## Alternative sync provider: SnapTrade
+
+SnapTrade is supported alongside Plaid. Configure either, or both.
+
+**It is not more reliable at the brokerage boundary.** Both Plaid and SnapTrade
+reach Fidelity through **Fidelity Access**, Fidelity's own OAuth consent
+program — SnapTrade's connect flow literally includes *"Agree to the Fidelity
+Access User Agreement."* Consent still expires (~12 months is the industry
+norm) and still breaks on password or MFA changes, whichever you use.
+
+What differs is the terms:
+
+| | Plaid Trial | SnapTrade Personal |
+| --- | --- | --- |
+| Cost | Free | Free |
+| Hard limit | **10 Items, lifetime, non-refundable** | ~20 connections |
+| Built for | Banks; investments is a secondary product | Brokerages |
+| Token to store | Yes — an access token per Item | **None** |
+
+The last row is why the SnapTrade path is simpler: a Personal API key
+identifies the user, so there is no per-connection token for the worker to
+hold, no KV namespace, and nothing to disconnect.
+
+```powershell
+cd worker
+npx wrangler secret put SNAPTRADE_CLIENT_ID      # Personal client ID
+npx wrangler secret put SNAPTRADE_CONSUMER_KEY   # Personal consumer key
+npx wrangler deploy
+```
+
+Get both from <https://snaptrade.com/personal> → Dashboard. A **Sync via
+SnapTrade** button then appears; the first click opens SnapTrade's Connection
+Portal in a new tab, and after linking your brokerage you press it again.
+
+Requests are signed per
+[SnapTrade's spec](https://docs.snaptrade.com/docs/request-signatures):
+HMAC-SHA256 over canonical JSON (`{content, path, query}`, keys sorted, no
+whitespace), base64, in a `Signature` header. `tests/snaptrade.test.mjs`
+verifies this against Node's own HMAC implementation.
+
+### Dead ends, so you don't chase them
+
+- **OFX Direct Connect** (`ofx.fidelity.com`) — the classic no-third-party
+  route. Fidelity **shut it off in December 2025**.
+- **Akoya** — the most direct rail, and ironically spun out of Fidelity's own
+  parent. B2B only: requires a company and signed data-access agreements.
+
 ## Adding more tickers
 
 Edit `config/symbols.json`:
@@ -200,7 +247,8 @@ Edit `config/symbols.json`:
 ```powershell
 python -m unittest discover -s tests -v     # projection engine + pipeline
 node --test tests/csv.test.cjs              # brokerage CSV import
-node --test tests/worker.test.mjs           # Plaid worker origin checks + aggregation
+node --test tests/worker.test.mjs           # Plaid worker auth + origin checks + aggregation
+node --test tests/snaptrade.test.mjs        # SnapTrade request signing + position parsing
 ```
 
 There is also an end-to-end smoke test that loads the real page in headless Edge

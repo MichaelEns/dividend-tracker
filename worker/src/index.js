@@ -54,10 +54,26 @@
  *   wrangler secret put ALLOWED_ORIGINS     (https://<you>.github.io, ...)
  *   wrangler secret put SYNC_PASSPHRASE     (a long random string)
  *   wrangler kv namespace create TOKENS     (then paste the id into wrangler.toml)
+ *
+ * SnapTrade is an optional alternative provider (see snaptrade.js). Configure
+ * it instead of, or alongside, Plaid:
+ *   wrangler secret put SNAPTRADE_CLIENT_ID
+ *   wrangler secret put SNAPTRADE_CONSUMER_KEY
+ *
+ *   POST /snaptrade/portal   -> { url } to open the Connection Portal
+ *   POST /snaptrade/holdings -> { holdings, institution }
+ *
+ * SnapTrade needs no token storage here: its Personal key identifies the user,
+ * so there is nothing per-connection to persist and no Item quota to exhaust.
  */
 
-const TOKEN_KEY = "plaid:item:default";
+import {
+  snaptradeConfigured,
+  createPortalUrl,
+  fetchSnaptradeHoldings,
+} from "./snaptrade.js";
 
+const TOKEN_KEY = "plaid:item:default";
 const PLAID_HOSTS = {
   sandbox: "https://sandbox.plaid.com",
   development: "https://development.plaid.com",
@@ -126,6 +142,12 @@ export default {
       }
       if (url.pathname === "/item/disconnect" && request.method === "POST") {
         return json(await disconnectItem(env), 200, cors);
+      }
+      if (url.pathname === "/snaptrade/portal" && request.method === "POST") {
+        return json({ url: await createPortalUrl(env) }, 200, cors);
+      }
+      if (url.pathname === "/snaptrade/holdings" && request.method === "POST") {
+        return json(await fetchSnaptradeHoldings(env), 200, cors);
       }
       return json({ error: "not found" }, 404, cors);
     } catch (err) {
@@ -234,6 +256,8 @@ async function readStatus(env) {
     institution: (stored && stored.institution) || null,
     connectedAt: (stored && stored.connectedAt) || null,
     persistence: tokenStore(env) ? "kv" : "none",
+    plaidConfigured: Boolean(env.PLAID_CLIENT_ID && env.PLAID_SECRET),
+    snaptradeConfigured: snaptradeConfigured(env),
   };
 }
 async function safeJson(req) {

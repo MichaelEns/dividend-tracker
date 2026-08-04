@@ -544,6 +544,11 @@ function bindEvents() {
     disconnectButton.addEventListener('click', () => disconnectBank());
   }
 
+  const snaptradeButton = document.getElementById('sync-snaptrade');
+  if (snaptradeButton) {
+    snaptradeButton.addEventListener('click', () => syncFromSnaptrade());
+  }
+
   document.getElementById('drip-toggle').addEventListener('change', (event) => {
     state.prefs.drip = event.target.checked;
     save(PREFS_KEY, state.prefs);
@@ -790,6 +795,74 @@ async function disconnectBank() {
   }
 }
 
+/* --------------------------------------------------------- SnapTrade sync
+ *
+ * An alternative to Plaid. Both reach Fidelity through Fidelity Access, so
+ * this is not more reliable at the brokerage boundary - it simply has no
+ * equivalent of Plaid's 10-Items-for-the-lifetime-of-the-account Trial cap.
+ *
+ * Flow:
+ *   1. POST worker /snaptrade/holdings   -> positions, if already connected
+ *   2. If nothing is connected, POST worker /snaptrade/portal -> { url },
+ *      open the Connection Portal, and let the user retry once linked.
+ *
+ * The Personal API key identifies the user, so there is no per-connection
+ * token for this page or the worker to hold. */
+
+async function syncFromSnaptrade() {
+  if (!WORKER_BASE) return;
+  const button = document.getElementById('sync-snaptrade');
+  const original = button ? button.innerHTML : '';
+  const restore = () => {
+    if (!button) return;
+    button.disabled = false;
+    button.innerHTML = original;
+  };
+
+  const key = getSyncKey(true);
+  if (!key) {
+    setStatus('A sync passphrase is required. Set SYNC_PASSPHRASE on the worker first.', 'error');
+    return;
+  }
+
+  try {
+    if (button) { button.disabled = true; button.textContent = 'Reading positions…'; }
+    setStatus('Reading positions from SnapTrade…', 'ok');
+
+    const payload = await workerPost('/snaptrade/holdings', {}, key);
+
+    if (!payload.connected) {
+      // Nothing linked yet: hand the user off to SnapTrade's portal. The link
+      // completes on their side, so we cannot await it - prompt a retry.
+      setStatus('No brokerage is linked to SnapTrade yet. Opening the connection portal…', 'ok');
+      const portal = await workerPost('/snaptrade/portal', {}, key);
+      if (portal && portal.url) {
+        window.open(portal.url, '_blank', 'noopener');
+        setStatus('Link your brokerage in the new tab, then press “Sync via SnapTrade” again.', 'ok');
+      } else {
+        setStatus('SnapTrade did not return a connection portal URL.', 'error');
+      }
+      restore();
+      return;
+    }
+
+    const holdings = payload.holdings || {};
+    const source = payload.institution || 'SnapTrade';
+    const kept = applyHoldings(holdings, source);
+    if (kept === 0) {
+      setStatus(`No tracked symbols returned from ${source}. `
+        + `Read ${Object.keys(holdings).length} position(s) across ${payload.accounts} account(s) `
+        + `but none matched configured tickers.`, 'error');
+    } else {
+      setStatus(`Synced ${kept} position(s) from ${source} across ${payload.accounts} account(s).`, 'ok');
+    }
+  } catch (err) {
+    setStatus('SnapTrade sync failed: ' + err.message, 'error');
+  } finally {
+    restore();
+  }
+}
+
 /* ---------------------------------------------------------------------- init */
 
 async function init() {
@@ -802,16 +875,22 @@ async function init() {
   const syncBtn = document.getElementById('sync-bank');
   if (syncBtn) syncBtn.hidden = !WORKER_BASE;
 
-  // Only offer "Disconnect" once a connection is actually stored. Probing
-  // requires the passphrase, so stay quiet if it has not been entered yet.
+  // Only offer "Disconnect" once a connection is actually stored, and only
+  // offer SnapTrade if the worker has credentials for it. Probing requires the
+  // passphrase, so stay quiet if it has not been entered yet.
   const disconnectBtn = document.getElementById('disconnect-bank');
-  if (disconnectBtn) {
-    disconnectBtn.hidden = true;
-    if (WORKER_BASE && getSyncKey(false)) {
-      workerPost('/status', {}, getSyncKey(false))
-        .then((s) => { disconnectBtn.hidden = !(s && s.connected); })
-        .catch(() => { /* offline or bad key: leave hidden */ });
-    }
+  const snaptradeBtn = document.getElementById('sync-snaptrade');
+  if (disconnectBtn) disconnectBtn.hidden = true;
+  if (snaptradeBtn) snaptradeBtn.hidden = true;
+  if (WORKER_BASE && getSyncKey(false)) {
+    workerPost('/status', {}, getSyncKey(false))
+      .then((s) => {
+        if (disconnectBtn) disconnectBtn.hidden = !(s && s.connected);
+        if (snaptradeBtn) snaptradeBtn.hidden = !(s && s.snaptradeConfigured);
+        // If only SnapTrade is set up, the Plaid button is just a dead end.
+        if (syncBtn && s && s.snaptradeConfigured && !s.plaidConfigured) syncBtn.hidden = true;
+      })
+      .catch(() => { /* offline or bad key: leave hidden */ });
   }
 
   renderSyncPill();
