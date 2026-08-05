@@ -104,14 +104,14 @@ async function main() {
       summaryHidden: document.getElementById('summary-panel').hidden,
       addHidden: document.getElementById('add-bank-balances').hidden,
       status: document.getElementById('sync-status').textContent.trim(),
-      backLink: !!document.querySelector('.page-nav a'),
+      backLink: !!document.querySelector('.footer .app-link a'),
       styled: getComputedStyle(document.body).fontFamily,
     })`));
 
     console.log('  page: ' + view.h1 + ' — ' + view.title);
     check('the page loads and is the balances page', /balance/i.test(view.h1 || ''), view.h1);
     check('the stylesheet applied', /\w/.test(view.styled || ''), view.styled);
-    check('there is a way back to the dividend page', view.backLink);
+    check('there is a way back to the dividend app from the footer', view.backLink);
     check('with nothing linked, the table is hidden', view.panelHidden === true);
     check('and the page explains itself instead of going blank',
       view.empty && view.empty.hidden === false && view.empty.text.length > 20,
