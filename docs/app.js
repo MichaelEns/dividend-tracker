@@ -52,6 +52,9 @@ const state = {
   swRegistration: null,
   refreshing: false,
   lastRefreshAt: null,
+  // Share counts refresh on their own clock, separately from data.json.
+  autoSyncing: false,
+  lastAutoSyncAt: null,
   // Set once data.json has been loaded and the controls have been bound.
   activated: false,
 };
@@ -2230,6 +2233,121 @@ function startOfToday() {
 
 const AUTO_REFRESH_MIN_GAP_MS = 60 * 1000;
 
+/*
+ * Share counts are re-synced on their own schedule, separately from data.json.
+ *
+ * They are a different kind of stale. data.json is rebuilt daily and is cheap
+ * to re-fetch, so a resume always pulls it. Share counts come from a brokerage
+ * round trip that takes seconds and costs API calls, and they only change when
+ * a trade settles - so opening the app forty times in an afternoon should not
+ * mean forty syncs.
+ *
+ * Six hours is chosen to be shorter than a trading day, so a position bought in
+ * the morning is reflected by the evening, and long enough that ordinary app
+ * use never triggers a round trip. Pulling down overrides it: an explicit
+ * gesture means "I want this now", subject only to a short anti-hammer gap.
+ */
+const AUTO_SYNC_STALE_MS = 6 * 60 * 60 * 1000;
+const AUTO_SYNC_MIN_GAP_MS = 60 * 1000;
+
+/**
+ * True when share counts are old enough to be worth re-reading.
+ *
+ * Takes the record rather than reading module state so it is a plain function
+ * of its inputs: testable without hooks, and honest about what it depends on.
+ *
+ * An absent or unreadable timestamp counts as stale. Failing the other way
+ * would freeze the counts for ever with nothing on screen to explain why.
+ * A timestamp in the future counts as fresh, so clock skew between devices
+ * cannot cause a sync storm.
+ */
+function holdingsAreStale(syncMeta, nowMs) {
+  const at = syncMeta && syncMeta.at;
+  if (!at) return true;
+  const t = Date.parse(at);
+  if (Number.isNaN(t)) return true;
+  return (nowMs || Date.now()) - t >= AUTO_SYNC_STALE_MS;
+}
+
+/**
+ * Is the user part-way through typing a share count?
+ *
+ * Applying a sync re-renders the holdings panel, which destroys the input being
+ * typed into and takes the caret with it. A background refresh must never do
+ * that - it would look like the app fighting the user.
+ */
+function isEditingHoldings() {
+  const el = typeof document !== 'undefined' ? document.activeElement : null;
+  if (!el || typeof el.closest !== 'function') return false;
+  return Boolean(el.closest('#holdings-inputs') || el.closest('.account-add'));
+}
+
+/**
+ * Re-read share counts from whichever provider is connected, quietly.
+ *
+ * Deliberately silent. This runs on app open and on resume, when the user has
+ * not asked for anything and cannot act on a failure - so a red banner would be
+ * noise. The freshness pill is the honest channel: if this keeps failing, the
+ * pill ages and turns amber on its own.
+ *
+ * Never prompts for the passphrase. A modal appearing because an app was
+ * brought back to the foreground would be indefensible; without a stored
+ * passphrase this simply does nothing and the manual button still works.
+ */
+async function autoSyncHoldings(options) {
+  const force = !!(options && options.force);
+  if (!WORKER_BASE || state.autoSyncing) return false;
+
+  const key = getSyncKey(false);
+  if (!key) return false;
+  if (isEditingHoldings()) return false;
+
+  const now = Date.now();
+  // The minimum gap exists to stop resume events firing a sync every few
+  // seconds. A pull-down is a person deliberately asking, and the gesture is
+  // already rate-limited by human effort, so it skips the gap - being silently
+  // told "too soon" after pulling would look broken. The concurrency guard
+  // above still prevents two syncs overlapping.
+  if (!force && state.lastAutoSyncAt && now - state.lastAutoSyncAt < AUTO_SYNC_MIN_GAP_MS) {
+    return false;
+  }
+  if (!force && !holdingsAreStale(state.syncMeta, now)) return false;
+
+  state.autoSyncing = true;
+  state.lastAutoSyncAt = now;
+  try {
+    const status = await workerPost('/status', {}, key);
+
+    if (status.snaptradeConfigured) {
+      const payload = await workerPost('/snaptrade/holdings', {}, key);
+      if (!payload || !payload.connected) return false;
+      applyConnections(connectionsFrom(payload, 'SnapTrade'), 'snaptrade');
+      if (state.prefs.includeSheltered) {
+        const note = state.syncNote;
+        applyConnections(Array.isArray(payload.sheltered) ? payload.sheltered : [], 'snaptrade');
+        state.syncNote = note;
+      } else {
+        dropShelteredAccounts();
+      }
+      return true;
+    }
+
+    if (status.connected) {
+      const payload = await workerPost('/holdings/refresh', {}, key);
+      const connections = connectionsFrom(payload, status.institution || 'Bank sync');
+      if (connections.length === 0) return false;
+      applyConnections(connections, 'plaid');
+      return true;
+    }
+    return false;
+  } catch {
+    // Silent by design; see the doc comment above.
+    return false;
+  } finally {
+    state.autoSyncing = false;
+  }
+}
+
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
 
@@ -2286,7 +2404,14 @@ async function refreshNow(options) {
   say('Refreshing…');
   try {
     if (state.swRegistration) state.swRegistration.update().catch(() => {});
-    state.data = await loadData();
+    // A deliberate pull means "make everything current", not just the rates.
+    // Run both together so the gesture is one wait rather than two, and let a
+    // failed holdings sync stay quiet - the figures are still refreshed.
+    const [data] = await Promise.all([
+      loadData(),
+      autoSyncHoldings({ force: true }).catch(() => false),
+    ]);
+    state.data = data;
     state.lastRefreshAt = Date.now();
     // If the very first load failed, this is the moment the page becomes
     // usable: finish the wiring before rendering, or the table appears with
@@ -2482,6 +2607,10 @@ async function init() {
     if (document.hidden) return;
     renderStaleness();
     autoRefresh();
+    // Share counts too, but on their own six-hour clock: a resume should pick
+    // up a trade from this morning without costing a brokerage round trip
+    // every time the app is glanced at.
+    autoSyncHoldings();
   });
 
   // Rotating the phone crosses the breakpoint, and the footer's colspan is
@@ -2503,6 +2632,12 @@ async function init() {
 
   activate();
   applyData();
+
+  // Opening the app is the most common way it is used, so it is the moment
+  // most worth having current numbers. Deliberately not awaited: the table
+  // should paint from the stored counts immediately rather than waiting on a
+  // brokerage round trip, and the figures update in place when it lands.
+  autoSyncHoldings();
 }
 
 /*
@@ -2556,6 +2691,7 @@ if (typeof module !== 'undefined' && module.exports) {
     skippedFrom,
     isShelteredAccount,
     connectionsFrom,
+    holdingsAreStale,
     reconcileFlatHoldings,
     removeAccount,
     totalsFromLots,

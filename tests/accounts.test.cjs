@@ -27,6 +27,7 @@ const {
   describeSkipped,
   skippedFrom,
   isShelteredAccount,
+  holdingsAreStale,
   connectionsFrom,
   reconcileFlatHoldings,
   removeAccount,
@@ -649,4 +650,44 @@ test('nothing is said about skipped retirement accounts when they were included'
   const skipped = [{ name: 'ROTH IRA', kind: 'sheltered' }];
   assert.strictEqual(describeSkipped(skipped, true), '');
   assert.match(describeSkipped(skipped, false), /Not counted/);
+});
+
+/* ---------------------------------------- when share counts are re-synced */
+
+const SIX_HOURS = 6 * 60 * 60 * 1000;
+const NOW = Date.parse('2026-08-04T20:00:00Z');
+const ago = (ms) => ({ at: new Date(NOW - ms).toISOString() });
+
+test('never-synced holdings are stale, so a first open pulls them', () => {
+  assert.strictEqual(holdingsAreStale(null, NOW), true);
+  assert.strictEqual(holdingsAreStale({}, NOW), true);
+  assert.strictEqual(holdingsAreStale({ at: null }, NOW), true);
+});
+
+test('an unreadable timestamp counts as stale rather than as fresh', () => {
+  // Failing the other way would freeze the counts for ever with nothing on
+  // screen to explain why.
+  assert.strictEqual(holdingsAreStale({ at: 'not a date' }, NOW), true);
+});
+
+test('holdings synced minutes ago are not re-read', () => {
+  // Opening the app forty times in an afternoon must not mean forty syncs.
+  assert.strictEqual(holdingsAreStale(ago(5 * 60 * 1000), NOW), false);
+});
+
+test('the threshold is shorter than a trading day', () => {
+  // A position bought this morning should be reflected by the evening.
+  assert.strictEqual(holdingsAreStale(ago(SIX_HOURS + 1000), NOW), true,
+    'six hours old should re-sync');
+  assert.strictEqual(holdingsAreStale(ago(SIX_HOURS - 60 * 1000), NOW), false,
+    'just under six hours should not');
+});
+
+test('a timestamp from the future is not treated as stale', () => {
+  // Clock skew between devices must not cause a sync storm.
+  assert.strictEqual(holdingsAreStale(ago(-60 * 60 * 1000), NOW), false);
+});
+
+test('a week-old sync is stale, which is the case the user asked about', () => {
+  assert.strictEqual(holdingsAreStale(ago(7 * 24 * 60 * 60 * 1000), NOW), true);
 });

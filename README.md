@@ -455,6 +455,47 @@ no holdings, so the amount cell only ever contained `$0.9100 / share`. It now
 sweeps 320–430px with six-figure share counts. **Any layout measurement of that
 column has to seed realistic share counts or it measures nothing.**
 
+### Refreshing without pressing Sync
+
+Two different things go stale, on two different clocks:
+
+| | What | When it refreshes |
+| --- | --- | --- |
+| `data.json` | dividend rates, ex-dates, pay dates | every open, every resume, every pull |
+| Share counts | how much you hold | every pull; on open/resume once **6 hours** old |
+
+They are separated deliberately. `data.json` is a single static fetch, cheap
+enough to do on every resume. Share counts are a brokerage round trip that takes
+seconds and costs API calls, and they only change when a trade settles — so
+opening the app forty times in an afternoon should not mean forty syncs.
+
+Six hours is short enough that a position bought this morning shows up by the
+evening, and long enough that ordinary use never triggers a round trip. Pulling
+down overrides it: an explicit gesture means *now*, and is already rate-limited
+by human effort, so it skips the minimum-gap check that exists to stop resume
+storms.
+
+Four rules keep this from becoming a nuisance:
+
+- **It never prompts for the passphrase.** A modal appearing because an app was
+  brought back to the foreground would be indefensible. Without a stored
+  passphrase, background sync simply does nothing and the button still works.
+- **It is silent, including on failure.** This runs when the user has not asked
+  for anything and cannot act on an error, so a red banner would be noise. The
+  freshness pill is the honest channel — if syncing keeps failing, the pill ages
+  and turns amber by itself.
+- **It never interrupts typing.** Applying a sync re-renders the holdings panel,
+  which would destroy the input being typed into and take the caret with it. A
+  focused share-count box suppresses the sync until focus leaves.
+- **It does not block first paint.** The table renders from the stored counts
+  immediately; the sync lands afterwards and updates the figures in place.
+
+An absent or unreadable sync timestamp counts as stale, so a fresh install pulls
+holdings on first open. A timestamp in the *future* counts as fresh, so clock
+skew between devices cannot cause a sync storm.
+
+`tests/auto-sync.cjs` drives all three moments against a real brokerage.
+
 ### Freshness pill
 
 The pill next to "Last updated" starts at day 0 = green
@@ -788,6 +829,19 @@ panel:
 ```powershell
 cd docs; Start-Process python -ArgumentList '-m','http.server','8765'
 cd ..; node tests\smoke.cjs "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+```
+
+### Auto-refresh verification
+
+`tests/auto-sync.cjs` drives the three moments share counts refresh on their
+own — opening the app, resuming a backgrounded tab, and pulling down — plus the
+two cases that must *not* sync: a reopen while the counts are still fresh, and a
+focused share-count input. Needs a local worker and real credentials, so it sits
+outside CI like the others.
+
+```powershell
+cd worker; npx wrangler dev --port 8787 --local
+node tests\auto-sync.cjs "<edge path>" <passphrase>
 ```
 
 ### Live sync verification
