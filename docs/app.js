@@ -64,6 +64,14 @@ const state = {
 /** Parse YYYY-MM-DD as a local date; `new Date(str)` would treat it as UTC. */
 function parseDate(value) {
   if (!value) return null;
+  // Accept a Date as well as a YYYY-MM-DD string. Callers that already hold a
+  // parsed date should not have to know which they have - and passing one
+  // silently produced an em dash, because String(date) has no '-' separators
+  // in the expected places. Copied rather than returned as-is, so the contract
+  // stays "a fresh Date, or null" and no caller can mutate another's.
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
+  }
   const parts = String(value).split('-').map(Number);
   if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
   return new Date(parts[0], parts[1] - 1, parts[2]);
@@ -924,10 +932,35 @@ function renderMeta() {
   const el = document.getElementById('meta');
   const generated = new Date(state.data.generatedAt);
   const symbols = state.data.symbols.map((s) => s.symbol).join(' · ');
-  el.textContent = `${symbols} — data refreshed ${generated.toLocaleString(undefined, {
+  el.textContent = `${symbols} — refreshed ${generated.toLocaleString(undefined, {
     dateStyle: 'medium', timeStyle: 'short',
   })}`;
   document.getElementById('sources').textContent = 'Sources: ' + state.data.sources.join('; ') + '.';
+}
+
+/**
+ * The next distribution to actually arrive.
+ *
+ * Chosen by pay date, not ex-date, because that is the question the card asks.
+ * Two things follow that picking by ex-date got wrong:
+ *
+ *  - A dividend that has gone ex but not yet paid is still coming. MSFT goes
+ *    ex about three weeks before it pays, so for those three weeks the card
+ *    skipped straight past money that had not arrived yet.
+ *  - The order can differ. A fund going ex later can still pay sooner, because
+ *    a fund pays the next business day where an equity takes weeks.
+ *
+ * Falls back to the ex-date for any row with no pay date, so a symbol whose
+ * feed is missing one still appears rather than silently vanishing.
+ */
+function nextPayment(rows, today) {
+  let best = null;
+  for (const row of rows || []) {
+    const when = parseDate(row.payDate) || row.date;
+    if (!when || !(when > today)) continue;
+    if (!best || when < best.when) best = { row, when };
+  }
+  return best;
 }
 
 function renderSummary(rows) {
@@ -941,7 +974,8 @@ function renderSummary(rows) {
   const trailing = scoped.filter((r) => r.status === 'paid' && r.date > yearAgo && r.date <= today);
   const ahead = scoped.filter((r) => r.date > today && r.date <= yearAhead);
   const confirmedAhead = ahead.filter((r) => r.status !== 'projected');
-  const next = scoped.find((r) => r.date > today);
+  const upcoming = nextPayment(scoped, today);
+  const next = upcoming && upcoming.row;
 
   const sum = (list) => list.reduce((acc, r) => acc + (hasHoldings ? (r.dollars || 0) : r.amount), 0);
   const fmt = (value) => (hasHoldings ? money(value) : perShare(value));
@@ -960,8 +994,11 @@ function renderSummary(rows) {
     {
       label: 'Next payment',
       value: next ? next.symbol : '—',
+      // The pay date, not the ex-date: this card answers "when does the next
+      // money arrive", and the ex-date only says which dividend you qualified
+      // for. Falls back to the ex-date only if a pay date is genuinely absent.
       sub: next
-        ? `${formatDate(next.exDate)} · ${perShare(next.amount)}/sh · ${next.status === 'projected' ? 'projected' : 'confirmed'}`
+        ? `${formatDate(upcoming.when)} · ${perShare(next.amount)}/sh · ${next.status === 'projected' ? 'projected' : 'confirmed'}`
         : 'None scheduled',
     },
   ];
@@ -1123,14 +1160,11 @@ function compactLayout() {
  * says which dividend you qualified for, while the pay date says when the cash
  * actually lands, and that is the thing worth reading at a glance.
  *
- * Not every row can answer it. Yahoo publishes no pay dates at all and Nasdaq
- * covers no mutual funds, so the funds here have none and never will from a
- * free feed. Rather than lead with "TBD" - which would be most rows, and would
- * bury the one date we do know - a row without a pay date leads with its
- * ex-date and labels it as one. The label is deliberately not "pay date TBD":
- * most such rows were paid years ago, so nothing is "to be determined" about
- * them; the pay date was simply never published. Why that happens is said once
- * in the fund's notes rather than on every row.
+ * Every row now carries a pay date - equities from Nasdaq, funds estimated as
+ * the next business day after the ex-date, since no free feed publishes them
+ * and Fidelity's schedule is regular enough to make that defensible. The
+ * fallback below is therefore rare rather than the norm it once was, and only
+ * fires if a feed genuinely returns nothing.
  */
 function portraitDates(row) {
   if (row.payDate) {
@@ -2669,6 +2703,7 @@ if (typeof module !== 'undefined' && module.exports) {
     parseCsv,
     extractHoldings,
     parseDate,
+    formatDate,
     quarterOf,
     portraitDates,
     classifyFreshness,
@@ -2692,6 +2727,7 @@ if (typeof module !== 'undefined' && module.exports) {
     isShelteredAccount,
     connectionsFrom,
     holdingsAreStale,
+    nextPayment,
     reconcileFlatHoldings,
     removeAccount,
     totalsFromLots,

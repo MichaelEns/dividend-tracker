@@ -6,12 +6,12 @@ import argparse
 import json
 import logging
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from . import __version__
 from .model import STATUS_ANNOUNCED, SymbolResult
-from .projection import project, trailing_12m
+from .projection import next_business_day, project, trailing_12m
 from .sources import (
     SourceError,
     fetch_nasdaq_declared,
@@ -57,6 +57,32 @@ def _apply_pay_dates(distributions: list, pay_dates: dict) -> int:
     for dist in distributions:
         if dist.pay_date is None and dist.ex_date in pay_dates:
             dist.pay_date = pay_dates[dist.ex_date]
+            filled += 1
+    return filled
+
+
+def _estimate_fund_pay_dates(distributions: list) -> int:
+    """Fill in missing pay dates for a mutual fund.
+
+    No free feed publishes pay dates for open-end mutual funds: Yahoo carries
+    none at all and Nasdaq does not cover funds. That left every fund row
+    showing an ex-date, which answers the wrong question - the ex-date is when
+    the NAV drops, not when the money is available.
+
+    Fidelity pays its index funds on the next business day after the ex-date,
+    unlike an equity where the gap is about three weeks. That regularity is
+    what makes an estimate defensible here and not for a stock, so this is only
+    ever applied to funds.
+
+    Only blanks are filled; a pay date from config/announced.json names one
+    specific distribution and always wins. Returns how many were estimated.
+    """
+
+    filled = 0
+    for dist in distributions:
+        if dist.pay_date is None and dist.ex_date is not None:
+            dist.pay_date = next_business_day(dist.ex_date)
+            dist.pay_date_estimated = True
             filled += 1
     return filled
 
@@ -133,15 +159,25 @@ def build_symbol(symbol_config, announcements: dict, today: date, horizon_years:
 
     result.distributions = history + confirmed_future + projections
 
-    # Portrait leads with the pay date, so a symbol that has none needs to say
-    # why once rather than leave every row looking broken. Stated from the
-    # finished set, not from the symbol's kind: the honest trigger is "no row
-    # here has a pay date", whatever the reason.
-    if result.distributions and not any(d.pay_date for d in result.distributions):
+    # No free feed publishes pay dates for open-end mutual funds, which left
+    # every fund row showing an ex-date - the date the NAV drops, not the date
+    # the money is available. Fidelity pays its index funds the next business
+    # day, and that regularity is what makes an estimate defensible here and
+    # not for an equity, where the gap is about three weeks and varies.
+    if symbol_config.kind == "fund":
+        estimated = _estimate_fund_pay_dates(result.distributions)
+        if estimated:
+            result.warnings.append(
+                "Pay dates for this fund are estimated as the next business day "
+                "after the ex-date, because no free feed publishes them. Add a "
+                "pay_date to config/announced.json to pin down any that matter."
+            )
+    elif result.distributions and not any(d.pay_date for d in result.distributions):
+        # An equity with no pay dates at all means the Nasdaq lookup failed;
+        # guessing one would be far wider of the mark than saying nothing.
         result.warnings.append(
-            "No pay dates: Yahoo does not publish them and Nasdaq does not cover "
-            "open-end mutual funds, so rows show the ex-date instead. Add pay_date "
-            "entries to config/announced.json for any you care about."
+            "No pay dates were available for this symbol, so rows show the "
+            "ex-date instead."
         )
 
     result.trailing_12m = trailing_12m(result.distributions, today)

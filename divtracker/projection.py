@@ -207,6 +207,36 @@ def _slot_coverage(series: list[tuple[date, float]], month: int, years: int = 3)
     return hits / len(window)
 
 
+def next_business_day(day: date) -> date:
+    """The next weekday after `day`.
+
+    Weekends only; US market holidays are not modelled. That is a deliberate
+    limit on an estimate rather than an oversight: a holiday pushes a payment
+    one further day, and carrying a holiday calendar to shave one day off an
+    approximation is more machinery than the accuracy is worth.
+    """
+
+    nxt = day + timedelta(days=1)
+    while nxt.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+        nxt = nxt + timedelta(days=1)
+    return nxt
+
+
+def roll_to_business_day(day: Optional[date]) -> Optional[date]:
+    """Move a date off a weekend, leaving weekdays alone.
+
+    Applied to projected pay dates. A projected ex-date plus a median lag lands
+    wherever the arithmetic puts it, including Saturdays - and nobody has ever
+    been paid a dividend on a Saturday. Left uncorrected it was invisible while
+    the table led with the ex-date, and became wrong on screen the moment the
+    pay date was promoted to the prominent line.
+    """
+
+    if day is None or day.weekday() < 5:
+        return day
+    return next_business_day(day)
+
+
 def _pay_lag(distributions: list[Distribution]) -> Optional[int]:
     lags = [
         (d.pay_date - d.ex_date).days
@@ -345,7 +375,8 @@ def project(
                     amount=round(amount, 6),
                     status=STATUS_PROJECTED,
                     kind=projected_kind,
-                    pay_date=ex_date + timedelta(days=pay_lag) if pay_lag is not None else None,
+                    pay_date=roll_to_business_day(
+                        ex_date + timedelta(days=pay_lag) if pay_lag is not None else None),
                     source="projection",
                     confidence=round(max(0.05, min(0.95, confidence)), 3),
                     basis=basis,

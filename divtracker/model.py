@@ -24,6 +24,11 @@ class Distribution:
     status: str
     kind: str = "income"                  # income | capital_gain | distribution
     pay_date: Optional[date] = None
+    # True when pay_date was derived rather than published. No free feed carries
+    # pay dates for open-end mutual funds, so theirs are estimated as the next
+    # business day after the ex-date; the page says so rather than presenting an
+    # estimate as fact.
+    pay_date_estimated: bool = False
     record_date: Optional[date] = None
     declared_date: Optional[date] = None
     source: str = ""
@@ -43,6 +48,10 @@ class Distribution:
         if out.get("confidence") is not None:
             out["confidence"] = round(out["confidence"], 3)
         out["amount"] = round(out["amount"], 6)
+        # False is the common case and carries no information; dropping it keeps
+        # data.json small, and the page treats "absent" as "not estimated".
+        if not out.get("pay_date_estimated"):
+            out.pop("pay_date_estimated", None)
         return {k: v for k, v in out.items() if v not in ("", None) or k in ("amount", "pay_date")}
 
 

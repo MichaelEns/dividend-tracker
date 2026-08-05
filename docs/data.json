@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-05T03:54:58+00:00",
+  "generatedAt": "2026-08-05T05:00:25+00:00",
   "asOfDate": "2026-08-05",
   "version": "1.0.0",
   "horizonYears": 3,
@@ -517,7 +517,7 @@
           "amount": 1.102082,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2027-12-11",
+          "pay_date": "2027-12-13",
           "source": "projection",
           "confidence": 0.721,
           "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
@@ -528,7 +528,7 @@
           "amount": 1.102082,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2028-03-11",
+          "pay_date": "2028-03-13",
           "source": "projection",
           "confidence": 0.698,
           "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
@@ -561,7 +561,7 @@
           "amount": 1.21283,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2028-12-10",
+          "pay_date": "2028-12-11",
           "source": "projection",
           "confidence": 0.635,
           "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
@@ -572,7 +572,7 @@
           "amount": 1.21283,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2029-03-11",
+          "pay_date": "2029-03-12",
           "source": "projection",
           "confidence": 0.615,
           "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
@@ -605,7 +605,7 @@
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
         "The data provider folds capital-gain distributions into the same stream as income, so a large December figure normally includes both.",
-        "No pay dates: Yahoo does not publish them and Nasdaq does not cover open-end mutual funds, so rows show the ex-date instead. Add pay_date entries to config/announced.json for any you care about."
+        "Pay dates for this fund are estimated as the next business day after the ex-date, because no free feed publishes them. Add a pay_date to config/announced.json to pin down any that matter."
       ],
       "distributions": [
         {
@@ -614,7 +614,8 @@
           "amount": 0.33,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2014-10-06",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -623,7 +624,8 @@
           "amount": 0.556,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2014-12-22",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -632,7 +634,8 @@
           "amount": 0.326,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2015-04-02",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -641,7 +644,8 @@
           "amount": 0.271,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2015-04-13",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -650,7 +654,8 @@
           "amount": 0.45,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2015-07-02",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -659,7 +664,8 @@
           "amount": 0.366,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2015-10-05",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -668,7 +674,8 @@
           "amount": 0.617,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2015-12-21",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -677,7 +684,8 @@
           "amount": 0.384,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2016-04-18",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -686,7 +694,8 @@
           "amount": 0.369,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2016-07-11",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -695,7 +704,8 @@
           "amount": 0.388,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2016-10-10",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -704,7 +714,8 @@
           "amount": 0.834,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2016-12-19",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -713,7 +724,8 @@
           "amount": 0.495,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2017-04-10",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -722,7 +734,8 @@
           "amount": 0.419,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2017-07-10",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -731,7 +744,8 @@
           "amount": 0.451,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2017-10-09",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -740,7 +754,8 @@
           "amount": 0.478,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2017-12-18",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -749,7 +764,8 @@
           "amount": 0.491,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2018-04-09",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -758,7 +774,8 @@
           "amount": 0.449,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2018-07-09",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -767,7 +784,8 @@
           "amount": 0.451,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2018-10-08",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -776,7 +794,8 @@
           "amount": 0.875,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2018-12-17",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -785,7 +804,8 @@
           "amount": 0.106,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2018-12-31",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -794,7 +814,8 @@
           "amount": 0.574,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2019-04-08",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -803,7 +824,8 @@
           "amount": 0.48,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2019-07-08",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -812,7 +834,8 @@
           "amount": 0.502,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2019-10-07",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -821,7 +844,8 @@
           "amount": 0.751,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2019-12-16",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -830,7 +854,8 @@
           "amount": 0.542,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2020-04-09",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -839,7 +864,8 @@
           "amount": 0.498,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2020-07-13",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -848,7 +874,8 @@
           "amount": 0.456,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2020-10-05",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -857,7 +884,8 @@
           "amount": 0.586,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2020-12-14",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -866,7 +894,8 @@
           "amount": 0.413,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2021-04-12",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -875,7 +904,8 @@
           "amount": 0.496,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2021-07-05",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -884,7 +914,8 @@
           "amount": 0.527,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2021-10-04",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -893,7 +924,8 @@
           "amount": 0.583,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2021-12-13",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -902,7 +934,8 @@
           "amount": 0.462,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2022-04-11",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -911,7 +944,8 @@
           "amount": 0.577,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2022-07-04",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -920,7 +954,8 @@
           "amount": 0.581,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2022-10-10",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -929,7 +964,8 @@
           "amount": 0.636,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2022-12-19",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -938,7 +974,8 @@
           "amount": 0.538,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2023-04-06",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -947,7 +984,8 @@
           "amount": 0.602,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2023-07-10",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -956,7 +994,8 @@
           "amount": 0.559,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2023-10-09",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -965,7 +1004,8 @@
           "amount": 0.702,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2023-12-18",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -974,7 +1014,8 @@
           "amount": 0.553,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2024-04-08",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -983,7 +1024,8 @@
           "amount": 0.625,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2024-07-08",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -992,7 +1034,8 @@
           "amount": 0.642,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2024-10-07",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1001,7 +1044,8 @@
           "amount": 0.723,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2024-12-23",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1010,7 +1054,8 @@
           "amount": 0.597,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2025-04-07",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1019,7 +1064,8 @@
           "amount": 0.654,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2025-07-14",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1028,7 +1074,8 @@
           "amount": 0.672,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2025-10-06",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1037,7 +1084,8 @@
           "amount": 0.725,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2025-12-22",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1046,7 +1094,8 @@
           "amount": 0.668,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2026-04-13",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1055,7 +1104,8 @@
           "amount": 0.695,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2026-07-13",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1064,7 +1114,8 @@
           "amount": 0.699747,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2026-10-06",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.818,
           "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
@@ -1075,7 +1126,8 @@
           "amount": 0.754935,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2026-12-18",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.807,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
@@ -1086,7 +1138,8 @@
           "amount": 0.695582,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2027-04-06",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.726,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
@@ -1097,7 +1150,8 @@
           "amount": 0.723696,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2027-07-09",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.777,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
@@ -1108,7 +1162,8 @@
           "amount": 0.728639,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2027-10-06",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.72,
           "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
@@ -1119,7 +1174,8 @@
           "amount": 0.786106,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2027-12-20",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.711,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
@@ -1130,7 +1186,8 @@
           "amount": 0.724302,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2028-04-06",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.639,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
@@ -1141,7 +1198,8 @@
           "amount": 0.753578,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2028-07-10",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.684,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
@@ -1152,7 +1210,8 @@
           "amount": 0.758725,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2028-10-06",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.633,
           "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
@@ -1163,7 +1222,8 @@
           "amount": 0.818564,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2028-12-19",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.625,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
@@ -1174,7 +1234,8 @@
           "amount": 0.754208,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2029-04-06",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.562,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
@@ -1185,7 +1246,8 @@
           "amount": 0.784693,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2029-07-10",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.602,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
@@ -1207,7 +1269,7 @@
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
         "The data provider folds capital-gain distributions into the same stream as income, so a large December figure normally includes both.",
-        "No pay dates: Yahoo does not publish them and Nasdaq does not cover open-end mutual funds, so rows show the ex-date instead. Add pay_date entries to config/announced.json for any you care about."
+        "Pay dates for this fund are estimated as the next business day after the ex-date, because no free feed publishes them. Add a pay_date to config/announced.json to pin down any that matter."
       ],
       "distributions": [
         {
@@ -1216,7 +1278,8 @@
           "amount": 0.828,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2014-12-22",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1225,7 +1288,8 @@
           "amount": 0.17,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2015-04-13",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1234,7 +1298,8 @@
           "amount": 1.292,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2015-12-21",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1243,7 +1308,8 @@
           "amount": 0.293,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2016-04-18",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1252,7 +1318,8 @@
           "amount": 1.273,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2016-12-19",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1261,7 +1328,8 @@
           "amount": 0.299,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2017-04-13",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1270,7 +1338,8 @@
           "amount": 1.477,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2017-12-18",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1279,7 +1348,8 @@
           "amount": 0.273,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2018-04-12",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1288,7 +1358,8 @@
           "amount": 1.457,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2018-12-17",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1297,7 +1368,8 @@
           "amount": 0.064,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2018-12-31",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1306,7 +1378,8 @@
           "amount": 0.371,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2019-04-15",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1315,7 +1388,8 @@
           "amount": 1.383,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2019-12-16",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1324,7 +1398,8 @@
           "amount": 0.231,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2020-04-09",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1333,7 +1408,8 @@
           "amount": 1.327,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2020-12-14",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1342,7 +1418,8 @@
           "amount": 0.135,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2021-04-12",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1351,7 +1428,8 @@
           "amount": 1.4,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2021-12-13",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1360,7 +1438,8 @@
           "amount": 0.178,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2022-04-11",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1369,7 +1448,8 @@
           "amount": 1.544,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2022-12-19",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1378,7 +1458,8 @@
           "amount": 0.219,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2023-04-17",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1387,7 +1468,8 @@
           "amount": 1.61,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2023-12-18",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1396,7 +1478,8 @@
           "amount": 0.03,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2023-12-28",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1405,7 +1488,8 @@
           "amount": 0.26,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2024-04-15",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1414,7 +1498,8 @@
           "amount": 1.652,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2024-12-23",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1423,7 +1508,8 @@
           "amount": 0.108,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2025-04-14",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1432,7 +1518,8 @@
           "amount": 1.786,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2025-12-22",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1441,7 +1528,8 @@
           "amount": 0.164,
           "status": "paid",
           "kind": "income",
-          "pay_date": null,
+          "pay_date": "2026-04-13",
+          "pay_date_estimated": true,
           "source": "Yahoo Finance"
         },
         {
@@ -1450,7 +1538,8 @@
           "amount": 1.836919,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2026-12-21",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.458,
           "basis": "Dec 2025 distribution of $1.7860/share grown +2.9%/yr"
@@ -1461,7 +1550,8 @@
           "amount": 0.168676,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2027-04-13",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.57,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
@@ -1472,7 +1562,8 @@
           "amount": 1.889289,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2027-12-21",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.403,
           "basis": "Dec 2025 distribution of $1.7860/share grown +2.9%/yr"
@@ -1483,7 +1574,8 @@
           "amount": 0.173485,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2028-04-12",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.501,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
@@ -1494,7 +1586,8 @@
           "amount": 1.943153,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2028-12-20",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.354,
           "basis": "Dec 2025 distribution of $1.7860/share grown +2.9%/yr"
@@ -1505,7 +1598,8 @@
           "amount": 0.178431,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": null,
+          "pay_date": "2029-04-12",
+          "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.441,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"

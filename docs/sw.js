@@ -15,7 +15,7 @@
  * The cache is still filled on install so a first-ever offline open works, and
  * every successful response refreshes it.
  */
-const CACHE = 'divtracker-v13';
+const CACHE = 'divtracker-v14';
 const SHELL = [
   './',
   './index.html',

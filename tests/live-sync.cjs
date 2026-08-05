@@ -240,6 +240,11 @@ async function main() {
     }; 'stubbed'`);
 
     console.log('live sandbox sync:');
+    // Auto-sync may have pulled real holdings in on load, so "wrote nothing"
+    // cannot mean "storage is empty". Capture the state this sync starts from
+    // and compare, which tests the actual claim: that THIS sync changed
+    // nothing.
+    const lotsBefore = await evalJs("localStorage.getItem('divtracker.holdingLots.v1') || '{}'");
     await evalJs("document.getElementById('sync-bank').click(); 'clicked'");
     await new Promise((r) => setTimeout(r, 9000));
 
@@ -262,8 +267,9 @@ async function main() {
       /IRA/.test(status) && /401k/i.test(status), status);
     check('it says nothing was added', /nothing was added/i.test(status), status);
 
-    const stored = await evalJs("localStorage.getItem('divtracker.holdingLots.v1')");
-    check('a sync matching nothing wrote nothing', !stored || stored === '{}', String(stored));
+    const lotsAfter = await evalJs("localStorage.getItem('divtracker.holdingLots.v1') || '{}'");
+    check('a sync matching nothing changed nothing', lotsAfter === lotsBefore,
+      'before: ' + lotsBefore + '\n         after:  ' + lotsAfter);
 
     // Once a TOKENS namespace is bound the worker remembers the connection, so
     // the next sync would refresh through it rather than link afresh. That is

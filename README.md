@@ -60,7 +60,8 @@ needed on a clean CI runner.
 | --- | --- |
 | Ex-date, amount (history) | Yahoo Finance |
 | Ex-date, amount (declared) | Nasdaq, plus `config/announced.json` |
-| **Pay date** | Nasdaq — for equities only |
+| **Pay date** (equities) | Nasdaq |
+| **Pay date** (funds) | estimated — next business day after the ex-date |
 
 Yahoo's dividend history carries an ex-date and an amount and nothing else, so
 every paid row arrives with no pay date. Nasdaq publishes pay dates for the
@@ -77,8 +78,22 @@ that specific dividend, which beats a lookup. This also feeds `_pay_lag`, so
 projected dividends inherit a lag measured over years of real history instead
 of over whatever single announcement happened to be in flight.
 
-Mutual funds get nothing — Nasdaq does not cover them and no free feed does, so
-`config/announced.json` is the only way to give FXAIX or FSKAX a pay date.
+Mutual funds get nothing from either feed, so theirs are **estimated as the next
+business day after the ex-date**. Fidelity pays its index funds on that
+schedule, and that regularity is what makes an estimate defensible here and not
+for an equity, where the gap is about three weeks and varies. Estimates carry a
+`pay_date_estimated` flag and the fund says so in its notes; a `pay_date` in
+`config/announced.json` always beats the estimate.
+
+Weekends are skipped, US market holidays are not. A holiday pushes a payment one
+further day, and carrying a holiday calendar to shave a day off an approximation
+is more machinery than the accuracy is worth.
+
+The same weekend rule now applies to *projected* equity pay dates. A projected
+ex-date plus a median 23-day lag lands wherever the arithmetic puts it, which
+had put four MSFT projections on a Saturday. That was invisible while the table
+led with the ex-date and became wrong on screen the moment the pay date was
+promoted to the prominent line.
 
 ## Deploying the public page (GitHub Pages)
 
@@ -425,13 +440,17 @@ separate columns, so this only applies to the fold — and the heading switches
 with it, because a column headed "Ex-date" showing pay dates would be worse
 than either arrangement.
 
-Not every row can answer it. Yahoo publishes no pay dates at all, and Nasdaq —
-which does — covers no open-end mutual funds, so the two Fidelity funds here
-have none and never will from a free feed. Those rows lead with their ex-date
-and label it `ex-date`, rather than leading with "TBD" and burying the one date
-that is known. The label is deliberately not "pay TBD": most such rows were
-paid years ago, so nothing about them is to be determined. A symbol with no pay
-dates at all says why once, in its notes.
+Not every row could once answer it. Yahoo publishes no pay dates at all, and
+Nasdaq — which does — covers no open-end mutual funds. That is now handled
+upstream: fund pay dates are estimated as the next business day after the
+ex-date, so **every** row carries one. A row falls back to showing its ex-date
+only if a feed returns nothing at all, which no longer happens for any tracked
+symbol.
+
+The "Next payment" card picks by pay date too, which fixed two things that
+picking by ex-date got wrong: a dividend that had gone ex but not yet paid was
+skipped entirely for the three weeks in between, and a fund going ex *later* can
+still pay *sooner* than an equity going ex earlier.
 
 Two non-obvious details:
 

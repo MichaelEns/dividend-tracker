@@ -14,8 +14,10 @@ from divtracker.model import (
     STATUS_PROJECTED,
     Distribution,
 )
-from divtracker.build import _apply_pay_dates
-from divtracker.projection import annual_growth_rate, infer_cadence, project
+from divtracker.build import _apply_pay_dates, _estimate_fund_pay_dates
+from divtracker.projection import (
+    annual_growth_rate, infer_cadence, next_business_day, project, roll_to_business_day,
+)
 from divtracker.sources import _parse_money, _parse_us_date
 
 
@@ -261,3 +263,88 @@ class NasdaqPayDateHarvestTests(unittest.TestCase):
             src._get_json = original
         self.assertEqual(declared, [])
         self.assertEqual(pay_dates, {})
+
+class FundPayDateEstimateTests(unittest.TestCase):
+    """No feed publishes mutual fund pay dates; Fidelity pays the next weekday."""
+
+    def _fund(self, ex, pay=None):
+        return Distribution(symbol="FXAIX", ex_date=ex, amount=0.5,
+                            status=STATUS_PAID, kind="income", pay_date=pay,
+                            source="Yahoo Finance")
+
+    def test_a_midweek_ex_date_pays_the_next_day(self):
+        dists = [self._fund(date(2026, 4, 8))]      # Wednesday
+        self.assertEqual(_estimate_fund_pay_dates(dists), 1)
+        self.assertEqual(dists[0].pay_date, date(2026, 4, 9))
+        self.assertTrue(dists[0].pay_date_estimated)
+
+    def test_a_friday_ex_date_skips_the_weekend(self):
+        # The common case: most fund ex-dates land on a Friday.
+        dists = [self._fund(date(2026, 7, 10))]     # Friday
+        _estimate_fund_pay_dates(dists)
+        self.assertEqual(dists[0].pay_date, date(2026, 7, 13))  # Monday
+
+    def test_every_weekday_lands_on_a_weekday(self):
+        # Whatever the ex-date, a payment never falls on a Saturday or Sunday.
+        for day in range(1, 29):
+            d = date(2026, 6, day)
+            self.assertLess(next_business_day(d).weekday(), 5,
+                            f"{d} produced a weekend pay date")
+            self.assertGreater(next_business_day(d), d,
+                               "the pay date must be after the ex-date")
+
+    def test_a_published_pay_date_is_never_overwritten(self):
+        # A pay date from config/announced.json names one specific
+        # distribution, which beats a rule applied to all of them.
+        dists = [self._fund(date(2026, 4, 8), pay=date(2026, 4, 15))]
+        self.assertEqual(_estimate_fund_pay_dates(dists), 0)
+        self.assertEqual(dists[0].pay_date, date(2026, 4, 15))
+        self.assertFalse(dists[0].pay_date_estimated)
+
+    def test_an_estimate_is_flagged_so_the_page_can_say_so(self):
+        dists = [self._fund(date(2026, 4, 8))]
+        _estimate_fund_pay_dates(dists)
+        self.assertTrue(dists[0].to_json()["pay_date_estimated"])
+
+    def test_a_real_pay_date_carries_no_flag_at_all(self):
+        # Absent rather than false: it is the common case and carries no
+        # information, and the page treats missing as "not estimated".
+        dists = [self._fund(date(2026, 4, 8), pay=date(2026, 4, 9))]
+        self.assertNotIn("pay_date_estimated", dists[0].to_json())
+
+class ProjectedPayDateTests(unittest.TestCase):
+    """Nobody has ever been paid a dividend on a Saturday."""
+
+    def test_a_weekend_pay_date_rolls_forward(self):
+        self.assertEqual(roll_to_business_day(date(2027, 12, 11)), date(2027, 12, 13))  # Sat -> Mon
+        self.assertEqual(roll_to_business_day(date(2028, 12, 10)), date(2028, 12, 11))  # Sun -> Mon
+
+    def test_a_weekday_is_left_exactly_alone(self):
+        for day in (date(2026, 8, 3), date(2026, 8, 7)):   # Monday, Friday
+            self.assertEqual(roll_to_business_day(day), day)
+
+    def test_no_pay_date_stays_none(self):
+        self.assertIsNone(roll_to_business_day(None))
+
+    def test_projected_payments_never_land_on_a_weekend(self):
+        # The real failure: a projected ex-date plus a median lag lands wherever
+        # the arithmetic puts it. MSFT's 23-day lag put four projections on a
+        # Saturday, invisible until the table started leading with the pay date.
+        history = []
+        ex = date(2020, 2, 19)
+        for _ in range(12):
+            history.append(Distribution(symbol="MSFT", ex_date=ex, amount=0.68,
+                                        status=STATUS_PAID, kind="income",
+                                        pay_date=ex + timedelta(days=23),
+                                        source="test"))
+            ex = ex + timedelta(days=91)
+        projections, _ = project("MSFT", history, [], today=date(2026, 8, 4),
+                                 horizon_years=3, hint_kind="equity")
+        self.assertTrue(projections, "no projections were generated")
+        for p in projections:
+            if p.pay_date is None:
+                continue
+            self.assertLess(p.pay_date.weekday(), 5,
+                            f"projected a payment on {p.pay_date:%A} ({p.pay_date})")
+            self.assertGreaterEqual(p.pay_date, p.ex_date,
+                                    "a payment cannot precede its ex-date")

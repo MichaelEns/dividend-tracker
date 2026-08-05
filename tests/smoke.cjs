@@ -483,6 +483,8 @@ async function main() {
           altPayFull: withPay ? withPay.querySelector('.c-pay').textContent.trim() : null,
           altNoPay: noPay ? noPay.querySelector('.date-alt').textContent : null,
           mainNoPay: noPay ? noPay.querySelector('.date-main').textContent : null,
+          // Every row should now carry a pay date; count any that do not.
+          rowsWithoutPay: rows.filter(r => r.querySelector('.c-pay').textContent.trim() === '—').length,
           altAmount: row.querySelector('.amt-alt').textContent,
           miniStatus: row.querySelector('.status-mini').textContent,
           amountText: row.querySelector('.amt').textContent,
@@ -509,12 +511,11 @@ async function main() {
       `folded pay date ${p.mainPay} does not match the real one ${p.altPayFull}`);
     assert.match(p.altPay, /^ex /,
       'the demoted line should now be the ex-date: ' + p.altPay);
-    assert.ok(p.altNoPay, 'no row in the fixture is missing a pay date to fall back on');
-    assert.match(p.altNoPay, /ex-date/, 'a row with no pay date must label its large line');
-    assert.doesNotMatch(p.altNoPay, /TBD/i,
-      'a dividend paid years ago must not be described as pending: ' + p.altNoPay);
-    assert.ok(p.mainNoPay && !/TBD/i.test(p.mainNoPay),
-      'a row with no pay date should lead with its ex-date, not a placeholder: ' + p.mainNoPay);
+    // Funds used to have no pay date at all, so this once asserted the
+    // fallback. Now that fund pay dates are estimated as the next business
+    // day, EVERY row carries one - which is the stronger claim to make.
+    assert.strictEqual(p.rowsWithoutPay, 0,
+      p.rowsWithoutPay + ' row(s) still show an ex-date instead of a pay date');
     assert.match(p.altAmount, /×/, 'per-share breakdown missing on mobile: ' + p.altAmount);
     assert.ok(p.miniStatus.length > 0, 'status was dropped entirely in portrait');
     assert.match(p.amountText, /^\$/, 'dollar amount not shown in portrait: ' + p.amountText);
@@ -760,8 +761,12 @@ async function main() {
     const withPay = pl.rows.filter((r) => /^ex /.test(r.alt || ''));
     const withoutPay = pl.rows.filter((r) => (r.alt || '') === 'ex-date');
     assert.ok(withPay.length, 'no row showed a pay date as its main line');
-    assert.ok(withoutPay.length,
-      'no row exercised the missing-pay-date fallback; the fixture needs a fund row');
+    // Funds once had no pay date at all and exercised the fallback. Now that
+    // theirs are estimated as the next business day, no row should reach it -
+    // which is the stronger claim, and the one the user actually asked for.
+    assert.strictEqual(withoutPay.length, 0,
+      'these rows still lead with an ex-date: '
+      + withoutPay.map((r) => r.sym + ' ' + r.main).join(', '));
 
     // The whole request: pay date big, ex date small.
     for (const r of withPay) {
@@ -771,11 +776,13 @@ async function main() {
         + r.altSize + 'px)');
       assert.match(r.alt, /^ex /, r.sym + ': the small line is not labelled as the ex-date');
     }
-    for (const r of withoutPay) {
-      assert.doesNotMatch(r.main, /TBD|^—$/i,
-        r.sym + ': a row with no pay date put a placeholder on the prominent line');
-      assert.ok(r.mainSize > r.altSize,
-        r.sym + ': the ex-date fallback is not the prominent line');
+
+    // Every symbol must be represented, including the funds - if the estimate
+    // silently stopped applying, only MSFT would show a pay date and this
+    // would still pass without it.
+    const symbolsShown = new Set(withPay.map((r) => r.sym));
+    for (const sym of ['MSFT', 'FXAIX', 'FSKAX']) {
+      assert.ok(symbolsShown.has(sym), sym + ' shows no pay date in portrait');
     }
 
     // Crossing back to the wide layout must restore the ex-date column, or the
@@ -1068,7 +1075,7 @@ async function main() {
     console.log('quarters: ' + q.rows + ' rows in ' + q.runs + ' contiguous bands, all labelled');
     console.log('portrait 390px: date + amount side by side, no horizontal scroll');
     console.log('portrait dates: pay date large, ex-date small, header says Pay date,');
-    console.log('                and rows with no pay date lead with the ex-date');
+    console.log('                every symbol including the funds');
     console.log('footer: cleared when empty, colspan follows the layout');
     console.log('pull to refresh: ignores a short drag, reloads on a full one,');
     console.log('                and lets a sideways swipe pan the table');
