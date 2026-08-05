@@ -240,11 +240,6 @@ async function main() {
     }; 'stubbed'`);
 
     console.log('live sandbox sync:');
-    // Auto-sync may have pulled real holdings in on load, so "wrote nothing"
-    // cannot mean "storage is empty". Capture the state this sync starts from
-    // and compare, which tests the actual claim: that THIS sync changed
-    // nothing.
-    const lotsBefore = await evalJs("localStorage.getItem('divtracker.holdingLots.v1') || '{}'");
     await evalJs("document.getElementById('sync-bank').click(); 'clicked'");
     await new Promise((r) => setTimeout(r, 9000));
 
@@ -267,9 +262,23 @@ async function main() {
       /IRA/.test(status) && /401k/i.test(status), status);
     check('it says nothing was added', /nothing was added/i.test(status), status);
 
-    const lotsAfter = await evalJs("localStorage.getItem('divtracker.holdingLots.v1') || '{}'");
-    check('a sync matching nothing changed nothing', lotsAfter === lotsBefore,
-      'before: ' + lotsBefore + '\n         after:  ' + lotsAfter);
+    // "Wrote nothing" cannot mean "storage is empty": auto-sync pulls real
+    // holdings in on load, and comparing a before/after snapshot only turned
+    // that into a race. The precise claim is about THIS sync - a Plaid sync
+    // that matched nothing must not have created a Plaid account, nor filed a
+    // single share under one. Whatever SnapTrade did is irrelevant to it.
+    const plaidState = await evalJs(`(() => {
+      const accounts = JSON.parse(localStorage.getItem('divtracker.accounts.v1') || '[]');
+      const lots = JSON.parse(localStorage.getItem('divtracker.holdingLots.v1') || '{}');
+      const plaidIds = accounts.filter((a) => /^plaid:/.test(a.provider || '')).map((a) => a.id);
+      const filed = Object.entries(lots).flatMap(([sym, buckets]) =>
+        Object.keys(buckets).filter((id) => plaidIds.includes(id)).map((id) => sym + '@' + id));
+      return JSON.stringify({ plaidIds, filed });
+    })()`);
+    const ps = JSON.parse(plaidState);
+    check('a sync matching nothing created no account', ps.plaidIds.length === 0,
+      'created: ' + ps.plaidIds.join(', '));
+    check('and filed no shares', ps.filed.length === 0, 'filed: ' + ps.filed.join(', '));
 
     // Once a TOKENS namespace is bound the worker remembers the connection, so
     // the next sync would refresh through it rather than link afresh. That is
