@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-05T16:52:06+00:00",
+  "generatedAt": "2026-08-05T17:06:38+00:00",
   "asOfDate": "2026-08-05",
   "version": "1.0.0",
   "horizonYears": 3,
@@ -15,12 +15,12 @@
       "name": "Microsoft Corporation",
       "kind": "equity",
       "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
-      "price": 488.69,
+      "price": 487.81,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 3.56,
-      "yieldPct": 0.7285,
+      "yieldPct": 0.7298,
       "growthRate": 0.1039,
       "warnings": [],
       "distributions": [
