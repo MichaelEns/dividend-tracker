@@ -31,6 +31,10 @@ const WORKER = 'http://127.0.0.1:8787';
 const SITE_PORT = 8765;
 const CDP_PORT = 9224;
 const DOCS = path.join(__dirname, '..', 'docs');
+// Direct fetches here bypass the page, so they must fold the passphrase the
+// same way the page does - a header cannot carry a curly apostrophe at all.
+const { normalizePassphrase } = require(path.join(DOCS, 'app.js'));
+const HEADER_KEY = () => normalizePassphrase(PASSPHRASE);
 
 let fails = 0;
 function check(name, cond, extra) {
@@ -63,9 +67,16 @@ function serve() {
     fs.readFile(file, (err, buf) => {
       if (err) { res.writeHead(404).end('not found'); return; }
       // Point the page at the local worker without touching the tracked file.
+      // Matches whatever WORKER_BASE currently holds: it was empty before the
+      // worker was deployed and is a real URL now, and a rewrite that silently
+      // stopped matching would send this test at the deployed worker instead,
+      // which does not allow a localhost origin.
       let body = buf;
       if (rel === 'config.js') {
-        body = Buffer.from(buf.toString().replace('WORKER_BASE: ""', `WORKER_BASE: "${WORKER}"`));
+        const text = buf.toString();
+        const patched = text.replace(/WORKER_BASE:\s*"[^"]*"/, `WORKER_BASE: "${WORKER}"`);
+        if (patched === text) throw new Error('could not rewrite WORKER_BASE in config.js');
+        body = Buffer.from(patched);
       }
       res.writeHead(200, {
         'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
@@ -127,9 +138,41 @@ const CUSTOM_USER = {
   }],
 };
 
+// A second, different institution holding a slice of the SAME fund - the exact
+// shape of the owner's real position, where FXAIX sits at both Fidelity and
+// U.S. Bank. Tartan Bank is simply another Plaid sandbox institution that
+// supports investments; what matters is that it is not the first one.
+const SECOND_INSTITUTION = 'ins_109511';
+const SECOND_USER = {
+  override_accounts: [{
+    type: 'investment', subtype: 'brokerage', starting_balance: 500,
+    meta: { name: 'U.S. Bank Brokerage' },
+    holdings: [holding('FXAIX', 100, 215.4)],
+  }],
+};
+
 async function main() {
   if (!BROWSER || !PASSPHRASE) throw new Error('usage: node tests/live-sync.cjs <browser> <passphrase>');
   if (!CLIENT_ID || !SECRET) throw new Error('set PLAID_CLIENT_ID and PLAID_SECRET');
+
+  // Wait for the worker rather than assuming it is up. `wrangler dev` takes
+  // the better part of a minute to start, and a test that races it fails as
+  // "Failed to fetch" in the browser - which reads like a broken page rather
+  // than a worker that is not listening yet.
+  if (!LIVE_URL) {
+    let ready = false;
+    for (let i = 0; i < 40 && !ready; i += 1) {
+      try {
+        const r = await fetch(WORKER + '/health');
+        ready = r.ok;
+      } catch { /* not up yet */ }
+      if (!ready) await new Promise((r) => setTimeout(r, 1000));
+    }
+    if (!ready) {
+      throw new Error(`no worker answering at ${WORKER} - start it with:\n`
+        + '  cd worker; npx wrangler dev --port 8787 --local');
+    }
+  }
 
   const server = LIVE_URL ? null : await serve();
   const url = LIVE_URL || `http://127.0.0.1:${SITE_PORT}/index.html`;
@@ -222,7 +265,7 @@ async function main() {
     const disconnect = async () => evalJs(`(async () => {
       const base = window.DIVTRACKER_CONFIG.WORKER_BASE;
       const r = await fetch(base + '/item/disconnect', { method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Sync-Key': ${JSON.stringify(PASSPHRASE)} },
+        headers: { 'Content-Type': 'application/json', 'X-Sync-Key': ${JSON.stringify(HEADER_KEY())} },
         body: '{}' });
       return r.status + ' ' + (await r.text());
     })()`);
@@ -313,6 +356,113 @@ async function main() {
 
     // Leave no live connection behind on a worker that outlives this test.
     if (persisted) console.log('         cleanup: ' + await disconnect());
+
+    /* ---------------------------------------------------------------------
+     * Two institutions at once. This is the case the whole per-account model
+     * exists for, and until now the worker could not express it: it stored one
+     * token, so linking the second removed the first.
+     * ------------------------------------------------------------------- */
+    if (persisted) {
+      console.log('two institutions holding the same fund:');
+      await evalJs(`
+        localStorage.removeItem('divtracker.accounts.v1');
+        localStorage.removeItem('divtracker.holdingLots.v1');
+        localStorage.removeItem('divtracker.holdings.v1'); 'cleared'`);
+
+      const first = await plaid('/sandbox/public_token/create', {
+        institution_id: 'ins_109508', initial_products: ['investments'],
+        options: { override_username: 'user_custom', override_password: JSON.stringify(CUSTOM_USER) },
+      });
+      const second = await plaid('/sandbox/public_token/create', {
+        institution_id: SECOND_INSTITUTION, initial_products: ['investments'],
+        options: { override_username: 'user_custom', override_password: JSON.stringify(SECOND_USER) },
+      });
+
+      // Link each in turn through the real page. The first goes through the
+      // main sync button; the second MUST go through "Add an institution",
+      // because by then the main button short-circuits to a refresh - which is
+      // exactly the trap that made a second institution unreachable.
+      const buttons = ['sync-bank', 'add-bank'];
+      for (let i = 0; i < 2; i += 1) {
+        const token = i === 0 ? first.public_token : second.public_token;
+        await rpc(ws, id++, 'Page.navigate', { url: url + '?run=' + Date.now() });
+        await new Promise((r) => setTimeout(r, 2500));
+        await evalJs(`window.Plaid = { create: (o) => ({ open: () =>
+          o.onSuccess(${JSON.stringify(token)}, { institution: { name: 'Bank' } }) }) }; 'ok'`);
+        const clicked = await evalJs(`(() => {
+          const b = document.getElementById(${JSON.stringify(buttons[i])});
+          if (!b) return 'missing';
+          b.hidden = false;
+          b.click();
+          return 'clicked';
+        })()`);
+        check(`${buttons[i]} exists and was clickable`, clicked === 'clicked', clicked);
+        await new Promise((r) => setTimeout(r, 9000));
+      }
+
+      const both = await evalJs(`(() => {
+        const el = document.getElementById('sync-status');
+        return JSON.stringify({
+          status: el ? el.textContent.trim() : '',
+          accounts: JSON.parse(localStorage.getItem('divtracker.accounts.v1') || '[]'),
+          lots: JSON.parse(localStorage.getItem('divtracker.holdingLots.v1') || '{}'),
+          totals: JSON.parse(localStorage.getItem('divtracker.holdings.v1') || '{}'),
+        });
+      })()`);
+      const st = JSON.parse(both);
+      console.log('         status line: ' + st.status);
+      console.log('         accounts: ' + st.accounts.map((a) => a.name + '/' + a.provider).join(', '));
+
+      check('both institutions became their own account', st.accounts.length === 2,
+        JSON.stringify(st.accounts));
+      const providers = st.accounts.map((a) => a.provider);
+      check('each account is pinned to its own institution id',
+        new Set(providers).size === 2 && providers.every((p) => /^plaid:ins_/.test(p)),
+        providers.join(', '));
+
+      const fxaixBuckets = Object.keys(st.lots.FXAIX || {});
+      check('FXAIX is held in two accounts, not one', fxaixBuckets.length === 2,
+        JSON.stringify(st.lots.FXAIX));
+      check('the second institution did NOT overwrite the first',
+        Math.abs((st.totals.FXAIX || 0) - 1000.512) < 1e-9,
+        'FXAIX total is ' + st.totals.FXAIX + ', expected 900.512 + 100');
+      check('MSFT survived, held at only the one institution that has it',
+        Object.keys(st.lots.MSFT || {}).length === 1 && st.totals.MSFT === 100,
+        JSON.stringify(st.lots.MSFT));
+
+      const status = await evalJs(`(async () => {
+        const r = await fetch(window.DIVTRACKER_CONFIG.WORKER_BASE + '/status', { method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Sync-Key': ${JSON.stringify(HEADER_KEY())} },
+          body: '{}' });
+        return JSON.stringify(await r.json());
+      })()`);
+      const stat = JSON.parse(status);
+      check('the worker is holding two connections at once',
+        (stat.connections || []).length === 2, JSON.stringify(stat.connections));
+
+      // One press must now refresh BOTH without any bank sign-in.
+      const refreshed = await evalJs(`(async () => {
+        window.Plaid = { create: () => ({ open: () => { window.__relinked = true; } }) };
+        window.__relinked = false;
+        document.getElementById('sync-bank').click();
+        await new Promise((r) => setTimeout(r, 9000));
+        return JSON.stringify({
+          status: document.getElementById('sync-status').textContent.trim(),
+          relinked: window.__relinked,
+          totals: JSON.parse(localStorage.getItem('divtracker.holdings.v1') || '{}'),
+        });
+      })()`);
+      const rf = JSON.parse(refreshed);
+      console.log('         status line: ' + rf.status);
+      check('one press refreshed both institutions', /Refreshed/.test(rf.status), rf.status);
+      check('and named them both',
+        /Platypus/.test(rf.status) && /Tartan/.test(rf.status), rf.status);
+      check('with no bank sign-in', rf.relinked === false, 'Plaid Link was opened');
+      check('and the split total is unchanged after refreshing',
+        Math.abs((rf.totals.FXAIX || 0) - 1000.512) < 1e-9, JSON.stringify(rf.totals));
+
+      console.log('         cleanup: ' + await disconnect());
+    }
 
     console.log(fails === 0 ? '\nLIVE SYNC VERIFIED' : `\n${fails} CHECK(S) FAILED`);
   } finally {

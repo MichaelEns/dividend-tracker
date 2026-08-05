@@ -405,8 +405,7 @@ tbody tr.dist-row td:first-child {
   background: color-mix(in srgb, var(--q-color, var(--muted)) 15%, transparent);
 }
 
-/* Clipped rather than display:none, so it stays in the accessibility tree. */
-.visually-hidden {
+/* Clipped rather than display:none, so it stays in the accessibility tree. */.visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -534,3 +533,35 @@ tfoot td { font-weight: 650; border-top: 2px solid var(--border); }
   tbody tr.dist-row td:first-child { padding-left: 11px; }
   td, th { vertical-align: top; }
 }
+
+/* Which institutions the worker is holding a connection to. Only meaningful
+   once there can be more than one, which is also when "Disconnect bank"
+   stopped being unambiguous. */
+.connections {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+.connections-label {
+  font-size: .78rem;
+  color: var(--muted);
+}
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: .78rem;
+  padding: 2px 4px 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.connection .link-btn {
+  font-size: .9rem;
+  line-height: 1;
+  padding: 2px 5px;
+  color: var(--muted);
+}
+.connection .link-btn:hover { color: var(--bad); }

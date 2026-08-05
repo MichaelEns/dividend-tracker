@@ -219,6 +219,33 @@ cd worker
 npx wrangler dev --port 8787 --local
 ```
 
+### The sync passphrase
+
+The worker is on a public URL, so every endpoint that can disclose holdings
+requires a shared passphrase, compared in constant time. It may be a sentence
+rather than a random string, because both sides fold it before comparing:
+everything that is not a letter or a digit is dropped and the rest is
+lowercased. `It's a lovely day, isn't it?` and
+`itsalovelydayisntit` are the same passphrase.
+
+That is not cosmetic. iOS autocorrects a straight apostrophe into a curly one
+(U+2019), so the same sentence typed on a phone and on a laptop is not the same
+string — and worse, **an HTTP header value is a byte string**, so `fetch`
+throws outright on any character above U+00FF. Sending the raw phrase failed in
+the browser before the request was even made, with an error about ByteStrings
+that mentioned nothing about passphrases. Folding on the page makes the header
+ASCII by construction; folding again on the worker means the stored secret may
+be spelled differently from what is typed.
+
+The two implementations — `worker/src/auth.js` and `docs/app.js` — must agree
+exactly, or every sync returns 401 with no clue why. `tests/worker.test.mjs`
+asserts that they do, rather than trusting it.
+
+Folding costs a little entropy, so a normalised passphrase shorter than eight
+characters is refused outright. The check runs *after* folding: `...` folds to
+the empty string, and so would any punctuation a caller sends, which without a
+floor would authorise everyone.
+
 ### 3. Point the page at the Worker
 
 Edit `docs/config.js`:
@@ -247,6 +274,37 @@ Item, no cost. **Disconnect bank** removes the stored token.
 | `POST /item/disconnect` | `/item/remove` + forget the token | No |
 
 All of the above require `X-Sync-Key`. Only `/` and `/health` are unauthenticated.
+
+## Syncing more than one institution
+
+FXAIX sits at both Fidelity and U.S. Bank, so the sync layer has to be able to
+hold two connections at once. It could not, in two different ways:
+
+- **Plaid** stored one access token under a fixed key, and linking a second
+  institution called `/item/remove` on the first. Linking U.S. Bank
+  *disconnected* Fidelity.
+- **SnapTrade** merged every linked brokerage into a single map with a combined
+  name like "Fidelity + U.S. Bank", so both landed in one account holding the
+  summed shares — defeating the per-account split entirely.
+
+Both now report **one entry per institution**, and the page files each under its
+own account. The account is pinned to `plaid:<institution_id>` — the stable id
+the provider assigns — never to the display name, because providers re-word
+those and a re-wording would fork the bucket and double the position.
+
+Two consequences worth knowing:
+
+- **"Sync from bank" refreshes; "Add an institution" links.** The main button
+  short-circuits to a refresh as soon as anything is connected, which is what
+  keeps a Plaid Trial plan alive — but it also meant that once Fidelity was
+  linked there was no way left to reach the Link flow. Adding a second bank
+  needs its own button.
+- **Disconnect is per-institution.** "Disconnect bank" was unambiguous with one
+  connection and is not with two, so each connection has its own × and the bare
+  button still means all of them.
+
+One press then refreshes every institution, and a failure at one does not stop
+the others: a stale login at U.S. Bank should not prevent Fidelity reporting.
 
 ## Reading the table
 

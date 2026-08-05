@@ -23,6 +23,8 @@ const {
   uniqueAccountId,
   overlappingSymbols,
   unmatchedMessage,
+  describeSync,
+  connectionsFrom,
   reconcileFlatHoldings,
   removeAccount,
   totalsFromLots,
@@ -408,4 +410,117 @@ test('an account holding nothing at all does not claim to have reported symbols'
 test('the SnapTrade context is folded into the sentence', () => {
   const msg = unmatchedMessage({ NVDA: 1 }, 'SnapTrade', TRACKED, 'across 2 account(s)');
   assert.match(msg, /SnapTrade across 2 account\(s\), but none/);
+});
+
+/* --------------------------------------- several institutions in one sync */
+
+const T3 = ['MSFT', 'FXAIX', 'FSKAX'];
+
+test('the worker multi-institution shape is used when present', () => {
+  const conns = connectionsFrom({
+    connections: [
+      { institution: 'Fidelity', holdings: { MSFT: 100 } },
+      { institution: 'U.S. Bank', holdings: { FXAIX: 100 } },
+    ],
+    holdings: { MSFT: 100, FXAIX: 100 },
+  }, 'fallback');
+  assert.strictEqual(conns.length, 2, 'the merged map was used instead of the split one');
+  assert.strictEqual(conns[1].institution, 'U.S. Bank');
+});
+
+test('an older worker returning one merged map still works', () => {
+  // A page updated before the worker, or vice versa; neither may assume the
+  // other has been deployed.
+  const conns = connectionsFrom({ holdings: { MSFT: 100 }, institution: 'Fidelity' }, 'fallback');
+  assert.deepStrictEqual(conns, [{ institution: 'Fidelity', holdings: { MSFT: 100 } }]);
+});
+
+test('a payload with no holdings at all yields nothing to apply', () => {
+  assert.deepStrictEqual(connectionsFrom({}, 'x'), []);
+  assert.deepStrictEqual(connectionsFrom(null, 'x'), []);
+  assert.deepStrictEqual(connectionsFrom({ connections: [] }, 'x'), []);
+});
+
+test('the fallback label is used only when the payload names nothing', () => {
+  assert.strictEqual(connectionsFrom({ holdings: { MSFT: 1 } }, 'Bank sync')[0].institution, 'Bank sync');
+  assert.strictEqual(connectionsFrom({ holdings: { MSFT: 1 }, institution: 'Real' }, 'Bank sync')[0].institution, 'Real');
+});
+
+test('a multi-institution sync names each institution and its count', () => {
+  const summary = {
+    applied: [{ label: 'Fidelity', kept: 2 }, { label: 'U.S. Bank', kept: 1 }],
+    empty: [], total: 3, count: 2,
+  };
+  const { text, ok } = describeSync(summary, T3);
+  assert.ok(ok);
+  assert.match(text, /Fidelity \(2\)/);
+  assert.match(text, /U\.S\. Bank \(1\)/);
+  assert.match(text, /3 position\(s\)/);
+});
+
+test('an institution that reported nothing tracked is still named', () => {
+  // Silence would look like it was never contacted, when it did answer.
+  const summary = {
+    applied: [{ label: 'Fidelity', kept: 2 }],
+    empty: [{ label: 'U.S. Bank', holdings: { NVDA: 5 } }],
+    total: 2, count: 2,
+  };
+  const { text, ok } = describeSync(summary, T3);
+  assert.ok(ok, 'a partial success is still a success');
+  assert.match(text, /Fidelity \(2\)/);
+  assert.match(text, /U\.S\. Bank reported nothing tracked/);
+});
+
+test('when a single institution matches nothing, the detailed message is used', () => {
+  const summary = { applied: [], empty: [{ label: 'First Platypus Bank', holdings: { ACHN: 1, BTC: 2 } }], total: 0, count: 1 };
+  const { text, ok } = describeSync(summary, T3);
+  assert.strictEqual(ok, false);
+  assert.match(text, /ACHN/, 'the single-institution case should still list what arrived');
+  assert.match(text, /MSFT, FXAIX, FSKAX/);
+});
+
+test('when several institutions all match nothing, all are named', () => {
+  const summary = {
+    applied: [],
+    empty: [{ label: 'Fidelity', holdings: { NVDA: 1 } }, { label: 'U.S. Bank', holdings: { VTI: 2 } }],
+    total: 0, count: 2,
+  };
+  const { text, ok } = describeSync(summary, T3);
+  assert.strictEqual(ok, false);
+  assert.match(text, /Fidelity, U\.S\. Bank/);
+  assert.match(text, /Nothing was changed/);
+});
+
+test('the verb is caller-chosen so a refresh does not claim to be a first sync', () => {
+  const summary = { applied: [{ label: 'Fidelity', kept: 1 }], empty: [], total: 1, count: 1 };
+  assert.match(describeSync(summary, T3, 'Refreshed').text, /^Refreshed/);
+  assert.match(describeSync(summary, T3).text, /^Synced/);
+});
+
+test('two institutions on one provider get different account buckets', () => {
+  // The bug this whole change exists to prevent: pinning both to the bare
+  // provider string made the second overwrite the first.
+  let accounts = [];
+  const a = syncAccount(accounts, 'plaid:ins_1', 'Fidelity');
+  const b = syncAccount(a.accounts, 'plaid:ins_2', 'U.S. Bank');
+  assert.strictEqual(b.accounts.length, 2, 'the second institution reused the first bucket');
+  assert.notStrictEqual(a.account.id, b.account.id);
+
+  let lots = {};
+  ({ lots } = replaceAccountLots(lots, a.account.id, { FXAIX: 900.512, MSFT: 100 }, T3));
+  ({ lots } = replaceAccountLots(lots, b.account.id, { FXAIX: 100 }, T3));
+  assert.deepStrictEqual(totalsFromLots(lots), { FXAIX: 1000.512, MSFT: 100 },
+    'syncing both institutions did not preserve both sets of shares');
+});
+
+test('re-wording one institution does not fork it away from the other', () => {
+  let accounts = [];
+  accounts = syncAccount(accounts, 'plaid:ins_1', 'Fidelity').accounts;
+  accounts = syncAccount(accounts, 'plaid:ins_2', 'U.S. Bank').accounts;
+  const again = syncAccount(accounts, 'plaid:ins_1', 'Fidelity Investments');
+  assert.strictEqual(again.accounts.length, 2, 'a re-wording created a third account');
+  // `created` is set only when an account is actually added, and every caller
+  // tests it for truthiness, so absent and false mean the same thing here.
+  assert.ok(!again.created, 'a re-wording should not report a new account');
+  assert.strictEqual(again.account.name, 'Fidelity Investments', 'the label should update in place');
 });

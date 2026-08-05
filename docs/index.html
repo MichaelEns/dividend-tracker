@@ -61,6 +61,9 @@
         <button type="button" class="primary" id="sync-bank" hidden>
           Sync from bank <span class="hint-inline">(links once, then reuses it)</span>
         </button>
+        <button type="button" class="primary" id="add-bank" hidden>
+          Add an institution <span class="hint-inline">(for holdings at a second bank)</span>
+        </button>
         <button type="button" class="primary" id="sync-snaptrade" hidden>Sync via SnapTrade</button>
         <button type="button" class="ghost" id="disconnect-bank" hidden>Disconnect bank</button>
         <label class="file-button">
@@ -73,6 +76,7 @@
         <label for="csv-account">Import replaces everything in</label>
         <select id="csv-account"></select>
       </div>
+      <div id="connection-list" class="connections" hidden></div>
       <p class="hint" id="sync-status" hidden></p>
       <p class="hint" id="csv-status">
         Works with the positions CSV exported from Fidelity or U.S. Bank / U.S. Bancorp

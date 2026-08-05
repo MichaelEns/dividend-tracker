@@ -7,7 +7,13 @@
 import test from 'node:test';
 import assert from 'node:assert';
 
-import { aggregateHoldings, originAllowed, authorized, timingSafeEqual } from '../worker/src/index.js';
+import { aggregateHoldings, connectionKey, mergeHoldings } from '../worker/src/index.js';
+// The passphrase and origin gates live in their own module: a Worker entry
+// module may only export functions, so a constant like MIN_PASSPHRASE cannot
+// be exported from index.js at all.
+import {
+  originAllowed, authorized, timingSafeEqual, normalizePassphrase, MIN_PASSPHRASE,
+} from '../worker/src/auth.js';
 
 const SITE = 'https://example.github.io';
 const PASS = 'correct-horse-battery-staple';
@@ -82,7 +88,9 @@ test('auth rejects a missing or wrong passphrase', () => {
   assert.strictEqual(authorized(undefined, env), false);
   assert.strictEqual(authorized('', env), false);
   assert.strictEqual(authorized('wrong', env), false);
-  assert.strictEqual(authorized(PASS.toUpperCase(), env), false);
+  // Case is deliberately NOT a difference: the passphrase is normalised so a
+  // phone keyboard's capitalisation cannot lock the owner out. Content is.
+  assert.strictEqual(authorized(PASS.replace('horse', 'zebra'), env), false);
 });
 
 test('auth accepts the exact passphrase', () => {
@@ -105,4 +113,167 @@ test('constant-time compare still returns correct results', () => {
   assert.strictEqual(timingSafeEqual('a', ''), false);
   assert.strictEqual(timingSafeEqual('', 'a'), false);
   assert.strictEqual(timingSafeEqual('abc', 'abcabc'), false);
+});
+
+/* ------------------------------------------------- passphrase normalisation
+ *
+ * The owner's passphrase is a sentence, and a sentence has to survive being
+ * typed on a phone. iOS silently rewrites a straight apostrophe into a curly
+ * one, so "I'm" from the phone and "I'm" from a laptop are different bytes and
+ * would never match without folding.
+ */
+
+const PHRASE = "It's a lovely day, isn't it?";
+const PHRASE_ENV = { SYNC_PASSPHRASE: PHRASE };
+
+test('the exact phrase authorises', () => {
+  assert.strictEqual(authorized(PHRASE, PHRASE_ENV), true);
+});
+
+test('an iOS curly apostrophe still authorises', () => {
+  // U+2019, which is what an iPhone actually inserts.
+  const curly = "It\u2019s a lovely day, isn\u2019t it?";
+  assert.notStrictEqual(curly, PHRASE, 'the fixture must differ in bytes to be a real test');
+  assert.strictEqual(authorized(curly, PHRASE_ENV), true);
+});
+
+test('punctuation, case and spacing do not matter', () => {
+  for (const variant of [
+    'itsalovelydayisntit',
+    "It's a lovely day, isn't it",
+    "IT'S A LOVELY DAY, ISN'T IT?",
+    "  It's   a lovely day,  isn't it?  ",
+    "It\u2018s a lovely day, isn\u2018t it\u2026",
+    'Its; a lovely day - isnt it!',
+  ]) {
+    assert.strictEqual(authorized(variant, PHRASE_ENV), true, 'rejected: ' + variant);
+  }
+});
+
+test('the stored secret may be spelled differently from what is typed', () => {
+  // Normalisation applies to both sides, so re-setting the secret with a curly
+  // apostrophe does not lock out a laptop typing a straight one.
+  const stored = { SYNC_PASSPHRASE: "It\u2019s a lovely day, isn\u2019t it?" };
+  assert.strictEqual(authorized(PHRASE, stored), true);
+});
+
+test('the words themselves still matter', () => {
+  for (const wrong of [
+    "It's a dreadful day, isn't it?",
+    "It's a lovely day, isnt",
+    'its a lovely day',
+    'lovely',
+    '',
+  ]) {
+    assert.strictEqual(authorized(wrong, PHRASE_ENV), false, 'accepted: ' + wrong);
+  }
+});
+
+test('normalisation cannot open a hole when the secret is punctuation', () => {
+  // "..." folds to the empty string, and so would any punctuation a caller
+  // sends, which without a floor would authorise everyone.
+  for (const weak of ['...', "'", '!!!', '   ', '-', 'ab.c']) {
+    assert.strictEqual(authorized(weak, { SYNC_PASSPHRASE: weak }), false,
+      'a passphrase that folds to almost nothing was accepted: ' + weak);
+    assert.strictEqual(authorized('anything at all', { SYNC_PASSPHRASE: weak }), false);
+  }
+});
+
+test('a passphrase at the length floor still works', () => {
+  const eight = 'abcd1234';
+  assert.strictEqual(normalizePassphrase(eight).length, MIN_PASSPHRASE);
+  assert.strictEqual(authorized(eight, { SYNC_PASSPHRASE: eight }), true);
+  assert.strictEqual(authorized('abcd123', { SYNC_PASSPHRASE: 'abcd123' }), false,
+    'one character under the floor must fail closed');
+});
+
+test('normalizePassphrase strips everything that is not a letter or digit', () => {
+  assert.strictEqual(normalizePassphrase("It's a lovely day."), 'itsalovelyday');
+  assert.strictEqual(normalizePassphrase('Caf\u00e9 99'), 'cafe99');
+  assert.strictEqual(normalizePassphrase(null), '');
+  assert.strictEqual(normalizePassphrase(undefined), '');
+});
+
+/* ------------------------------------------ more than one institution at once */
+
+test('a connection is identified by institution id, not by its name', () => {
+  // Plaid re-words institution names; a re-wording must not look like a new
+  // institution, or the same holdings get stored twice and counted twice.
+  assert.strictEqual(connectionKey({ institutionId: 'ins_1', institution: 'Fidelity' }), 'ins_1');
+  assert.strictEqual(connectionKey({ institutionId: 'ins_1', institution: 'Fidelity Investments' }), 'ins_1');
+  assert.notStrictEqual(connectionKey({ institutionId: 'ins_1' }), connectionKey({ institutionId: 'ins_2' }));
+});
+
+test('a connection with no institution id falls back to its item id', () => {
+  assert.strictEqual(connectionKey({ item_id: 'itm_9' }), 'itm_9');
+  assert.strictEqual(connectionKey({}), 'default');
+});
+
+test('merging across institutions sums rather than overwrites', () => {
+  const merged = mergeHoldings([
+    { institution: 'Fidelity', holdings: { FXAIX: 900.512, MSFT: 100 } },
+    { institution: 'U.S. Bank', holdings: { FXAIX: 100 } },
+  ]);
+  assert.deepStrictEqual(merged, { FXAIX: 1000.512, MSFT: 100 },
+    'the U.S. Bank FXAIX was lost to the Fidelity FXAIX');
+});
+
+/* ------------------------------- the page and the worker must agree exactly
+ *
+ * Two copies of normalizePassphrase exist: one in the worker, one in the page
+ * (which cannot import the worker). If they ever disagree, every sync returns
+ * 401 with no clue why, so their agreement is asserted rather than assumed.
+ */
+
+import { createRequire } from 'node:module';
+const pageNormalize = createRequire(import.meta.url)('../docs/app.js').normalizePassphrase;
+
+const SAMPLES = [
+  "It's a lovely day, isn't it?",
+  "It\u2019s a lovely day, isn\u2019t it?",
+  'itsalovelydayisntit',
+  '  MiXeD   CaSe, and punctuation!!  ',
+  'Caf\u00e9 na\u00efve 42',
+  'correct-horse-battery-staple',
+  '',
+  '...',
+  '\u4e2d\u6587 test 7',
+];
+
+test('the page folds passphrases exactly as the worker does', () => {
+  for (const s of SAMPLES) {
+    assert.strictEqual(pageNormalize(s), normalizePassphrase(s),
+      'page and worker disagree on: ' + JSON.stringify(s));
+  }
+});
+
+test('a folded passphrase is always safe to put in an HTTP header', () => {
+  // Found the hard way: an HTTP header value is a byte string, so fetch throws
+  // on any character above U+00FF - and iOS's curly apostrophe is U+2019. The
+  // request failed in the browser before it was ever sent, with an error about
+  // ByteStrings that mentioned nothing about passphrases. Folding on the page
+  // makes the header ASCII by construction.
+  for (const s of SAMPLES) {
+    const folded = pageNormalize(s);
+    assert.match(folded, /^[a-z0-9]*$/, 'not header-safe: ' + JSON.stringify(folded));
+    for (const ch of folded) {
+      assert.ok(ch.codePointAt(0) < 256,
+        'character above U+00FF would make fetch throw: ' + JSON.stringify(ch));
+    }
+    // The property that actually matters, stated the way the browser states it.
+    assert.doesNotThrow(() => new Headers({ 'X-Sync-Key': folded }),
+      'fetch would reject this header value: ' + JSON.stringify(s));
+  }
+});
+
+test('the raw phrase really would break a header, so folding is load-bearing', () => {
+  assert.throws(() => new Headers({ 'X-Sync-Key': "I\u2019m a lovely." }),
+    'if this stops throwing, the page-side fold is no longer needed');
+});
+
+test('folding is idempotent, so the worker can fold an already-folded value', () => {
+  for (const s of SAMPLES) {
+    const once = normalizePassphrase(s);
+    assert.strictEqual(normalizePassphrase(once), once, 'not idempotent: ' + JSON.stringify(s));
+  }
 });

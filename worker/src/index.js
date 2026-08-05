@@ -72,8 +72,12 @@ import {
   createPortalUrl,
   fetchSnaptradeHoldings,
 } from "./snaptrade.js";
+import { authorized, originAllowed } from "./auth.js";
 
-const TOKEN_KEY = "plaid:item:default";
+const ITEMS_KEY = "plaid:items";
+// Pre-multi-institution deployments stored a single Item here. Read once at
+// startup and folded into the list, so an existing connection is not dropped.
+const LEGACY_TOKEN_KEY = "plaid:item:default";
 const PLAID_HOSTS = {
   sandbox: "https://sandbox.plaid.com",
   development: "https://development.plaid.com",
@@ -141,7 +145,8 @@ export default {
         return json(await refreshHoldings(env), 200, cors);
       }
       if (url.pathname === "/item/disconnect" && request.method === "POST") {
-        return json(await disconnectItem(env), 200, cors);
+        const body = await safeJson(request);
+        return json(await disconnectItem(env, body && body.key), 200, cors);
       }
       if (url.pathname === "/snaptrade/portal" && request.method === "POST") {
         return json({ url: await createPortalUrl(env) }, 200, cors);
@@ -165,24 +170,6 @@ function corsHeaders(origin, env) {
   };
 }
 
-/**
- * Fail closed.
- *
- * An unset ALLOWED_ORIGINS must not mean "allow everything": this worker mints
- * Plaid Link tokens against a real (billable) Plaid account and drives bank
- * sign-in flows, so an open worker is abusable by any other site. Requests are
- * only permitted from an explicitly configured origin.
- */
-function originAllowed(origin, env) {
-  if (!origin) return false;
-  const allowed = String(env.ALLOWED_ORIGINS || "")
-    .split(",")
-    .map((s) => s.trim().replace(/\/+$/, ""))
-    .filter(Boolean);
-  if (allowed.length === 0) return false;
-  return allowed.includes(String(origin).trim().replace(/\/+$/, ""));
-}
-
 function json(body, status, cors) {
   return new Response(JSON.stringify(body), {
     status,
@@ -190,71 +177,89 @@ function json(body, status, cors) {
   });
 }
 
-/**
- * Constant-time string comparison.
- *
- * A plain === leaks how many leading characters matched via its return time,
- * which lets an attacker recover the passphrase one character at a time. This
- * always inspects every byte of the expected value.
- */
-function timingSafeEqual(a, b) {
-  const x = new TextEncoder().encode(String(a == null ? "" : a));
-  const y = new TextEncoder().encode(String(b == null ? "" : b));
-  // Length is not itself secret, but bail without a short-circuit on content.
-  let diff = x.length ^ y.length;
-  for (let i = 0; i < y.length; i += 1) {
-    diff |= (x[i % (x.length || 1)] || 0) ^ y[i];
-  }
-  return diff === 0;
-}
-
-/**
- * Fail closed, exactly like originAllowed.
- *
- * An unset SYNC_PASSPHRASE must not mean "no auth required", or a deployment
- * that simply forgot the secret would publish its holdings to the internet.
- */
-function authorized(presented, env) {
-  const expected = String(env.SYNC_PASSPHRASE || "");
-  if (!expected) return false;
-  if (!presented) return false;
-  return timingSafeEqual(presented, expected);
-}
-
 function tokenStore(env) {
   return env.TOKENS || null;
 }
 
-async function readStoredItem(env) {
+/**
+ * Every stored Plaid Item, oldest first.
+ *
+ * A list rather than a single record because holdings genuinely live at more
+ * than one institution - the whole reason this app tracks shares per account.
+ * Storing one Item meant linking U.S. Bank silently removed Fidelity, so the
+ * two could never be synced together no matter what the front end did.
+ *
+ * A single KV record holds the whole list: it is a handful of entries at most,
+ * and one read beats fanning out over an index.
+ */
+async function readItems(env) {
   const kv = tokenStore(env);
-  if (!kv) return null;
+  if (!kv) return [];
+  let items = [];
   try {
-    const raw = await kv.get(TOKEN_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+    const raw = await kv.get(ITEMS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(parsed)) items = parsed.filter((it) => it && it.access_token);
+  } catch { /* treat unreadable storage as empty rather than failing the sync */ }
+
+  // Fold in a connection made by a single-Item deployment. Done on read so no
+  // migration step has to run, and idempotent because the legacy key is
+  // deleted once its token is safely in the list.
+  try {
+    const legacyRaw = await kv.get(LEGACY_TOKEN_KEY);
+    if (legacyRaw) {
+      const legacy = JSON.parse(legacyRaw);
+      if (legacy && legacy.access_token
+        && !items.some((it) => it.access_token === legacy.access_token)) {
+        items.push({ ...legacy, key: legacy.key || connectionKey(legacy) });
+        await kv.put(ITEMS_KEY, JSON.stringify(items));
+      }
+      await kv.delete(LEGACY_TOKEN_KEY);
+    }
+  } catch { /* non-fatal: worst case the old connection needs re-linking */ }
+
+  return items;
 }
 
-async function writeStoredItem(env, record) {
+/**
+ * The stable identity of a connection.
+ *
+ * Never the institution's display name: Plaid re-words those, and a re-worded
+ * label would look like a brand new institution, so the same holdings would be
+ * stored twice and counted twice. institution_id is assigned by Plaid and does
+ * not change; item_id is the fallback when a lookup failed.
+ */
+function connectionKey(item) {
+  return String((item && (item.institutionId || item.item_id)) || "default");
+}
+
+async function writeItems(env, items) {
   const kv = tokenStore(env);
   if (!kv) return false;
-  await kv.put(TOKEN_KEY, JSON.stringify(record));
+  await kv.put(ITEMS_KEY, JSON.stringify(items));
   return true;
 }
 
-async function clearStoredItem(env) {
+async function clearStoredItems(env) {
   const kv = tokenStore(env);
   if (!kv) return;
-  try { await kv.delete(TOKEN_KEY); } catch { /* non-fatal */ }
+  try { await kv.delete(ITEMS_KEY); } catch { /* non-fatal */ }
+  try { await kv.delete(LEGACY_TOKEN_KEY); } catch { /* non-fatal */ }
 }
 
 async function readStatus(env) {
-  const stored = await readStoredItem(env);
+  const items = await readItems(env);
   return {
-    connected: Boolean(stored && stored.access_token),
-    institution: (stored && stored.institution) || null,
-    connectedAt: (stored && stored.connectedAt) || null,
+    connected: items.length > 0,
+    connections: items.map((it) => ({
+      key: it.key || connectionKey(it),
+      institution: it.institution || null,
+      connectedAt: it.connectedAt || null,
+    })),
+    // Kept so an older cached page still renders something sensible: it reads
+    // a single institution name and a single timestamp.
+    institution: items.length ? (items[0].institution || null) : null,
+    connectedAt: items.length ? (items[0].connectedAt || null) : null,
     persistence: tokenStore(env) ? "kv" : "none",
     plaidConfigured: Boolean(env.PLAID_CLIENT_ID && env.PLAID_SECRET),
     snaptradeConfigured: snaptradeConfigured(env),
@@ -316,17 +321,6 @@ async function exchangeAndFetch(env, publicToken) {
 
   const canPersist = Boolean(tokenStore(env));
 
-  // A previously linked Item would otherwise be orphaned: still subscribed and
-  // still billable on a paid plan, with its token no longer known to us.
-  if (canPersist) {
-    const previous = await readStoredItem(env);
-    if (previous && previous.access_token && previous.access_token !== accessToken) {
-      try {
-        await plaid(env, "/item/remove", { access_token: previous.access_token });
-      } catch { /* non-fatal: the new token is what matters */ }
-    }
-  }
-
   let result;
   try {
     result = await fetchHoldings(env, accessToken);
@@ -338,12 +332,42 @@ async function exchangeAndFetch(env, publicToken) {
     throw err;
   }
 
+  // Computed before the persistence branch because the browser needs it either
+  // way: it files the shares under this key, and if the link response omitted
+  // it the page would fall back to slugging the display name - which is the
+  // one thing that must never identify a connection, since a later refresh
+  // reports the stable id and the two would not match.
+  const key = connectionKey({ institutionId: result.institutionId, item_id: exchange.item_id });
+
   if (canPersist) {
-    await writeStoredItem(env, {
+    const items = await readItems(env);
+    const record = {
+      key,
+      item_id: exchange.item_id || null,
+      institutionId: result.institutionId || null,
       access_token: accessToken,
       institution: result.institution,
       connectedAt: new Date().toISOString(),
-    });
+    };
+
+    // Replace only the SAME institution - re-linking Fidelity after a password
+    // change should not leave two Fidelity tokens - and leave every other
+    // institution alone, which is the entire point of storing a list.
+    const existing = items.findIndex((it) => (it.key || connectionKey(it)) === record.key);
+    if (existing >= 0) {
+      const previous = items[existing];
+      if (previous.access_token && previous.access_token !== accessToken) {
+        // Otherwise the superseded Item stays subscribed and billable with its
+        // token no longer known to us.
+        try {
+          await plaid(env, "/item/remove", { access_token: previous.access_token });
+        } catch { /* non-fatal: the new token is what matters */ }
+      }
+      items[existing] = record;
+    } else {
+      items.push(record);
+    }
+    await writeItems(env, items);
   } else {
     // No KV bound: keep the original one-off contract rather than silently
     // leaving a live token behind that nothing can ever remove.
@@ -352,9 +376,23 @@ async function exchangeAndFetch(env, publicToken) {
     } catch { /* worst case, we just leave an orphan token with Plaid */ }
   }
 
-  return { ...result, persisted: canPersist };
+  return {
+    ...result,
+    connections: [{ key, institution: result.institution, holdings: result.holdings }],
+    persisted: canPersist,
+  };
 }
 
+/**
+ * Re-read every connected institution through its stored token.
+ *
+ * Returns one entry per institution rather than a merged map. Merging would
+ * throw away which shares came from where, and the page files shares per
+ * account precisely so that syncing Fidelity cannot disturb U.S. Bank.
+ *
+ * One institution failing does not fail the sync: a stale login at one
+ * brokerage should not stop the others reporting.
+ */
 async function refreshHoldings(env) {
   if (!tokenStore(env)) {
     throw new Error(
@@ -362,28 +400,85 @@ async function refreshHoldings(env) {
         "Bind one in wrangler.toml to enable free unlimited refreshes."
     );
   }
-  const stored = await readStoredItem(env);
-  if (!stored || !stored.access_token) {
+  const items = await readItems(env);
+  if (items.length === 0) {
     throw new Error("Not connected yet. Use \u201cSync from bank\u201d once first.");
   }
-  const result = await fetchHoldings(env, stored.access_token);
-  if (result.institution && result.institution !== stored.institution) {
-    await writeStoredItem(env, { ...stored, institution: result.institution });
+
+  const connections = [];
+  const errors = [];
+  let mutated = false;
+  for (const item of items) {
+    try {
+      const result = await fetchHoldings(env, item.access_token);
+      if (result.institution && result.institution !== item.institution) {
+        item.institution = result.institution;
+        mutated = true;
+      }
+      connections.push({
+        key: item.key || connectionKey(item),
+        institution: result.institution || item.institution || null,
+        holdings: result.holdings,
+        connectedAt: item.connectedAt || null,
+      });
+    } catch (err) {
+      errors.push(`${item.institution || "A connection"}: ${(err && err.message) || "failed"}`);
+    }
   }
-  return { ...result, persisted: true, connectedAt: stored.connectedAt || null };
+  if (mutated) await writeItems(env, items);
+  if (connections.length === 0) {
+    throw new Error(errors.join("; ") || "No connection could be refreshed.");
+  }
+
+  return {
+    connections,
+    errors,
+    // A single-institution view for older cached pages.
+    holdings: connections.length === 1 ? connections[0].holdings : mergeHoldings(connections),
+    institution: connections.map((c) => c.institution).filter(Boolean).join(" + ") || null,
+    persisted: true,
+    connectedAt: items[0].connectedAt || null,
+  };
 }
 
-async function disconnectItem(env) {
-  const stored = await readStoredItem(env);
-  if (stored && stored.access_token) {
+function mergeHoldings(connections) {
+  const out = {};
+  for (const conn of connections) {
+    for (const [sym, qty] of Object.entries(conn.holdings || {})) {
+      out[sym] = (out[sym] || 0) + qty;
+    }
+  }
+  return out;
+}
+
+/**
+ * Forget one institution, or all of them.
+ *
+ * Defaults to all so the button labelled "Disconnect bank" keeps meaning what
+ * it says; pass a key to drop a single institution and keep the rest.
+ */
+async function disconnectItem(env, key) {
+  const items = await readItems(env);
+  const targets = key ? items.filter((it) => (it.key || connectionKey(it)) === key) : items;
+  for (const item of targets) {
     // Ends the Investments subscription on a paid plan. Note this does NOT
     // return the consumed slot on a Trial plan - that quota is permanent.
     try {
-      await plaid(env, "/item/remove", { access_token: stored.access_token });
+      await plaid(env, "/item/remove", { access_token: item.access_token });
     } catch { /* still forget it locally */ }
   }
-  await clearStoredItem(env);
-  return { connected: false, removed: Boolean(stored && stored.access_token) };
+
+  const remaining = key
+    ? items.filter((it) => (it.key || connectionKey(it)) !== key)
+    : [];
+  if (remaining.length) await writeItems(env, remaining);
+  else await clearStoredItems(env);
+
+  return {
+    connected: remaining.length > 0,
+    removed: targets.length,
+    remaining: remaining.map((it) => it.institution || null),
+  };
 }
 
 async function fetchHoldings(env, accessToken) {
@@ -392,12 +487,15 @@ async function fetchHoldings(env, accessToken) {
   });
   const holdings = aggregateHoldings(investments);
 
-  // Best-effort institution lookup for UI display.
+  // The id is what identifies the connection in storage; the name is only for
+  // display, because Plaid re-words those and a re-wording must not fork the
+  // stored connection into a second one holding the same shares.
+  const institutionId = (investments.item && investments.item.institution_id) || null;
   let institutionName = null;
-  if (investments.item && investments.item.institution_id) {
+  if (institutionId) {
     try {
       const inst = await plaid(env, "/institutions/get_by_id", {
-        institution_id: investments.item.institution_id,
+        institution_id: institutionId,
         country_codes: (env.PLAID_COUNTRY_CODES || "US").split(",").map((s) => s.trim()),
       });
       if (inst && inst.institution && inst.institution.name) {
@@ -405,7 +503,7 @@ async function fetchHoldings(env, accessToken) {
       }
     } catch { /* non-fatal */ }
   }
-  return { holdings, institution: institutionName };
+  return { holdings, institution: institutionName, institutionId };
 }
 
 function aggregateHoldings(investments) {
@@ -427,4 +525,7 @@ function aggregateHoldings(investments) {
 }
 
 // Exported for unit testing; the Worker runtime only uses the default export.
-export { aggregateHoldings, originAllowed, authorized, timingSafeEqual };
+// Only functions may be exported from a Worker entry module - the runtime
+// treats named exports as entrypoints. Passphrase and origin helpers live in
+// auth.js, which tests import directly.
+export { aggregateHoldings, connectionKey, mergeHoldings };

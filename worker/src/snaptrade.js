@@ -199,25 +199,34 @@ async function listAccounts(env) {
 }
 
 /**
- * Reads positions across every connected account and merges them.
+ * Reads positions across every connected account, grouped by institution.
  *
  * One brokerage login can expose several accounts (brokerage, Roth, HSA), and
- * the same fund is often held in more than one, so totals must sum rather than
- * overwrite - the same reason the Plaid path aggregates.
+ * the same fund is often held in more than one, so accounts AT THE SAME
+ * institution are summed. Different institutions are kept apart: merging
+ * Fidelity into U.S. Bank would throw away which shares came from where, and
+ * the page files shares per account precisely so syncing one cannot disturb
+ * the other.
+ *
+ * Grouping is by the brokerage authorization id where SnapTrade provides one,
+ * falling back to the institution name. The id is stable; the name is what
+ * SnapTrade prints, and a re-worded name must not look like a new institution.
  */
 async function fetchSnaptradeHoldings(env) {
   const accounts = await listAccounts(env);
   if (accounts.length === 0) {
-    return { holdings: {}, institution: null, accounts: 0, connected: false };
+    return { connections: [], holdings: {}, institution: null, accounts: 0, connected: false };
   }
 
-  const merged = {};
-  const institutions = new Set();
+  const groups = new Map();
   for (const account of accounts) {
     const id = account && (account.id || account.account_id);
     if (!id) continue;
-    const name = account && (account.institution_name || account.brokerage_authorization_name);
-    if (name) institutions.add(String(name));
+    const name = (account && (account.institution_name || account.brokerage_authorization_name)) || null;
+    const auth = account && account.brokerage_authorization;
+    const key = String(
+      (auth && (auth.id || auth)) || name || "snaptrade"
+    );
 
     let positions = [];
     try {
@@ -227,21 +236,37 @@ async function fetchSnaptradeHoldings(env) {
       const wrapper = await snaptrade(env, "GET", `/accounts/${encodeURIComponent(id)}/holdings`, null);
       positions = (wrapper && wrapper.positions) || [];
     }
+
+    if (!groups.has(key)) groups.set(key, { key, institution: name, holdings: {}, accounts: 0 });
+    const group = groups.get(key);
+    group.accounts += 1;
+    if (!group.institution && name) group.institution = name;
     const partial = aggregatePositions(Array.isArray(positions) ? positions : []);
     for (const [sym, qty] of Object.entries(partial)) {
-      merged[sym] = (merged[sym] || 0) + qty;
+      group.holdings[sym] = (group.holdings[sym] || 0) + qty;
     }
   }
 
-  // Name every linked brokerage rather than counting them. The front end no
-  // longer keys storage off this string, but it is still what the user reads,
-  // and "2 accounts" tells them nothing about which two.
-  const named = [...institutions];
+  const connections = [...groups.values()];
+
+  // Name every linked brokerage rather than counting them. Only used for
+  // display now that each connection carries its own name, but "2 accounts"
+  // told the user nothing about which two.
+  const named = connections.map((c) => c.institution).filter(Boolean);
   const institution = named.length === 0 ? null
     : named.length <= 3 ? named.join(" + ")
       : `${named.slice(0, 2).join(" + ")} +${named.length - 2} more`;
 
+  // A merged view for older cached pages, which read `holdings` directly.
+  const merged = {};
+  for (const conn of connections) {
+    for (const [sym, qty] of Object.entries(conn.holdings)) {
+      merged[sym] = (merged[sym] || 0) + qty;
+    }
+  }
+
   return {
+    connections,
     holdings: merged,
     institution,
     accounts: accounts.length,

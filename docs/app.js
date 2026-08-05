@@ -35,6 +35,7 @@ const state = {
   // Appended to the next sync's status line when a brand-new account overlaps
   // what other accounts already hold, i.e. when the total may have doubled.
   syncNote: '',
+  connections: [],
   prefs: { range: 'upcoming', hideProjected: false, symbols: [], drip: false },
   today: new Date(),
   // Test-only clock injection. Production reads the real clock per render, so
@@ -1421,6 +1422,20 @@ function bindEvents() {
     disconnectButton.addEventListener('click', () => disconnectBank());
   }
 
+  const addBankButton = document.getElementById('add-bank');
+  if (addBankButton) {
+    addBankButton.addEventListener('click', () => addBankConnection());
+  }
+
+  const connectionBox = document.getElementById('connection-list');
+  if (connectionBox) {
+    connectionBox.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-connection]');
+      if (!button) return;
+      disconnectBank(button.getAttribute('data-connection'));
+    });
+  }
+
   const snaptradeButton = document.getElementById('sync-snaptrade');
   if (snaptradeButton) {
     snaptradeButton.addEventListener('click', () => syncFromSnaptrade());
@@ -1531,12 +1546,35 @@ function forgetSyncKey() {
   try { window.localStorage.removeItem(SYNC_KEY_KEY); } catch { /* ignore */ }
 }
 
+/**
+ * Fold a passphrase to the form the worker compares.
+ *
+ * Two problems, one answer. The first is that phones rewrite what you type:
+ * iOS turns a straight apostrophe into a curly one, so the same sentence typed
+ * on a phone and on a laptop is not the same string.
+ *
+ * The second only appears once you try it. An HTTP header value is a byte
+ * string, so `fetch` throws outright on any character above U+00FF — and a
+ * curly apostrophe is U+2019. Sending the raw passphrase therefore fails in
+ * the browser before the request is made, with an error about ByteStrings that
+ * says nothing about passphrases. Folding to letters and digits here makes the
+ * header value ASCII by construction.
+ *
+ * Must agree exactly with normalizePassphrase in worker/src/index.js.
+ */
+function normalizePassphrase(value) {
+  return String(value == null ? '' : value)
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
 async function workerPost(path, body, key) {
   const resp = await fetch(`${WORKER_BASE}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Sync-Key': key,
+      'X-Sync-Key': normalizePassphrase(key),
     },
     body: JSON.stringify(body || {}),
   });
@@ -1623,15 +1661,210 @@ function trackedSymbols() {
   return state.data.symbols.map((s) => s.symbol);
 }
 
+/**
+ * Apply a sync that reported several institutions at once.
+ *
+ * The worker returns one entry per institution rather than a merged map,
+ * because merging throws away which shares came from where - and the whole
+ * point of tracking shares per account is that Fidelity's FXAIX and U.S.
+ * Bank's FXAIX are different money.
+ *
+ * Each institution gets its own bucket, pinned to a provider key that includes
+ * the id the provider assigned it. Pinning to the bare provider would make two
+ * institutions on the same rail overwrite each other, which is precisely the
+ * bug this exists to prevent; pinning to the display name would fork the
+ * bucket the moment the provider re-words itself.
+ *
+ * Returns a summary rather than a count, because with several institutions
+ * "3 positions" alone no longer says where they came from.
+ */
+function applyConnections(connections, provider) {
+  const list = Array.isArray(connections) ? connections : [];
+  const applied = [];
+  const empty = [];
+  const notes = [];
+  let total = 0;
+
+  for (const conn of list) {
+    const holdings = (conn && conn.holdings) || {};
+    const label = (conn && conn.institution) || 'Bank sync';
+    const key = `${provider}:${(conn && conn.key) || accountId(label)}`;
+    const kept = applyHoldings(holdings, label, key);
+    if (kept > 0) {
+      applied.push({ label, kept, holdings });
+      total += kept;
+      if (state.syncNote) notes.push(state.syncNote);
+    } else {
+      empty.push({ label, holdings });
+    }
+  }
+
+  state.syncNote = notes.join('');
+  return { applied, empty, total, count: list.length };
+}
+
+/**
+ * Turn that summary into one sentence.
+ *
+ * Kept separate from applyConnections so it can be tested without a DOM, and
+ * so the wording is decided in one place rather than at four call sites.
+ */
+function describeSync(summary, tracked, verb) {
+  const { applied, empty } = summary;
+  const done = verb || 'Synced';
+  if (applied.length === 0) {
+    if (empty.length === 1) {
+      return { text: unmatchedMessage(empty[0].holdings, empty[0].label, tracked), ok: false };
+    }
+    const names = empty.map((e) => e.label).join(', ');
+    return {
+      text: `${done} ${empty.length} institution(s) — ${names} — but none of their positions `
+        + `matched the symbols this page tracks (${(tracked || []).join(', ')}). Nothing was changed.`,
+      ok: false,
+    };
+  }
+
+  const parts = applied.map((a) => `${a.label} (${a.kept})`);
+  let text = `${done} ${summary.total} position(s) from ${parts.join(', ')}.`;
+  if (empty.length) {
+    // Naming them matters: silence would look like those institutions were
+    // never contacted, when in fact they reported nothing this page tracks.
+    text += ` ${empty.map((e) => e.label).join(', ')} reported nothing tracked.`;
+  }
+  return { text, ok: true };
+}
+
+/**
+ * Accept both the multi-institution shape and the single-institution one.
+ *
+ * A page cached before this build talks to the new worker and vice versa, so
+ * neither side may assume the other has been updated.
+ */
+function connectionsFrom(payload, fallbackLabel) {
+  if (payload && Array.isArray(payload.connections) && payload.connections.length) {
+    return payload.connections;
+  }
+  if (payload && payload.holdings && typeof payload.holdings === 'object') {
+    return [{ institution: payload.institution || fallbackLabel, holdings: payload.holdings }];
+  }
+  return [];
+}
+
+/**
+ * Run Plaid Link and file whatever the new institution reports.
+ *
+ * Split out of syncFromBank because that function short-circuits to a refresh
+ * as soon as anything is connected - which meant that once Fidelity was
+ * linked, there was no way left to reach the Link flow and add U.S. Bank. The
+ * worker can hold several connections; this is how the second one is made.
+ */
+async function openPlaidLink(key, button, restore) {
+  if (button) button.textContent = 'Preparing sign-in…';
+  setStatus('Requesting a link token from the sync worker…', 'ok');
+
+  const { link_token: linkToken } = await workerPost('/link/token/create', {}, key);
+  if (!linkToken) throw new Error('The worker did not return a link_token.');
+
+  await loadPlaidSdk();
+  if (button) button.textContent = 'Waiting for bank sign-in…';
+  setStatus('Sign in to your bank in the Plaid window. Each institution is linked '
+    + 'once; later syncs reuse it.', 'ok');
+
+  const handler = window.Plaid.create({
+    token: linkToken,
+    onSuccess: async (publicToken, metadata) => {
+      try {
+        if (button) button.textContent = 'Fetching holdings…';
+        const payload = await workerPost('/link/token/exchange', { public_token: publicToken }, key);
+        const fallback = (metadata && metadata.institution && metadata.institution.name) || 'Bank sync';
+        const connections = connectionsFrom(payload, fallback);
+        if (connections.length === 0) {
+          throw new Error('The worker returned no holdings.');
+        }
+        const summary = applyConnections(connections, 'plaid');
+        const described = describeSync(summary, trackedSymbols());
+        if (!described.ok) {
+          setStatus(described.text, 'error');
+          restore();
+          return;
+        }
+        setStatus(described.text + (payload.persisted
+          ? ' Connection saved, so future syncs skip the bank sign-in.'
+          : ' Access token discarded (no KV bound).') + state.syncNote, 'ok');
+        refreshConnectionList(key);
+      } catch (err) {
+        setStatus('Sync failed: ' + err.message, 'error');
+      } finally {
+        restore();
+      }
+    },
+    onExit: (err) => {
+      restore();
+      if (err) setStatus('Bank sign-in cancelled or errored: ' + (err.error_message || err.error_code || 'exited'), 'error');
+      else setStatus('Bank sign-in cancelled.', 'ok');
+    },
+    onEvent: () => {},
+  });
+  handler.open();
+}
+
+/** Shared button bookkeeping for the three worker-backed actions. */
+function beginSync(buttonId) {
+  const button = document.getElementById(buttonId);
+  const original = button ? button.innerHTML : '';
+  return {
+    button,
+    restore: () => {
+      if (!button) return;
+      button.disabled = false;
+      button.innerHTML = original;
+    },
+  };
+}
+
+/**
+ * Show which institutions the worker is holding a connection to.
+ *
+ * With one connection this was implicit. With several it is not: "Disconnect
+ * bank" is ambiguous the moment there are two banks, and there was no way to
+ * tell whether the second one actually linked. Each row can be dropped on its
+ * own, leaving the others connected.
+ */
+function renderConnections() {
+  const box = document.getElementById('connection-list');
+  if (!box) return;
+  const list = state.connections || [];
+  if (!WORKER_BASE || list.length === 0) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = '<span class="connections-label">Connected:</span>'
+    + list.map((c) => `<span class="connection">${escapeHtml(c.institution || 'Bank')}`
+      + `<button type="button" class="link-btn" data-connection="${escapeHtml(c.key || '')}"`
+      + ` aria-label="Disconnect ${escapeHtml(c.institution || 'this bank')}">×</button></span>`).join('');
+}
+
+/** Refresh the cached connection list from the worker, best effort. */
+async function refreshConnectionList(key) {
+  if (!WORKER_BASE) return;
+  try {
+    const status = await workerPost('/status', {}, key);
+    state.connections = status.connections || [];
+    renderConnections();
+    const disconnect = document.getElementById('disconnect-bank');
+    if (disconnect) disconnect.hidden = !status.connected;
+    const add = document.getElementById('add-bank');
+    // Only worth offering once something is connected; before that, the main
+    // sync button already opens Plaid Link.
+    if (add) add.hidden = !status.connected;
+  } catch { /* a status check must never break the page */ }
+}
+
 async function syncFromBank() {
   if (!requireWorker('Bank sync')) return;
-  const button = document.getElementById('sync-bank');
-  const original = button ? button.innerHTML : '';
-  const restore = () => {
-    if (!button) return;
-    button.disabled = false;
-    button.innerHTML = original;
-  };
+  const { button, restore } = beginSync('sync-bank');
 
   const key = getSyncKey(true);
   if (!key) {
@@ -1642,88 +1875,79 @@ async function syncFromBank() {
   try {
     if (button) { button.disabled = true; button.textContent = 'Checking connection…'; }
 
-    // Reuse the stored Plaid Item when there is one. This is the whole point:
+    // Reuse the stored Plaid Items when there are any. This is the whole point:
     // no new Item means no Trial-plan slot consumed and no bank sign-in.
     const status = await workerPost('/status', {}, key);
     if (status.connected) {
       setStatus('Refreshing holdings through the saved connection…', 'ok');
       if (button) button.textContent = 'Refreshing…';
       const payload = await workerPost('/holdings/refresh', {}, key);
-      const holdings = payload && payload.holdings;
-      if (!holdings || typeof holdings !== 'object') throw new Error('The worker returned no holdings.');
-      const source = payload.institution || status.institution || 'Bank sync';
-      const kept = applyHoldings(holdings, source, 'plaid');
-      if (kept === 0) {
-        setStatus(unmatchedMessage(holdings, source, trackedSymbols()), 'error');
-      } else {
-        setStatus(`Refreshed ${kept} position(s) from ${source}. No new bank sign-in needed.`
-          + state.syncNote, 'ok');
-      }
+      const connections = connectionsFrom(payload, status.institution || 'Bank sync');
+      if (connections.length === 0) throw new Error('The worker returned no holdings.');
+      const summary = applyConnections(connections, 'plaid');
+      const described = describeSync(summary, trackedSymbols(), 'Refreshed');
+      setStatus(described.ok
+        ? described.text + ' No new bank sign-in needed.' + state.syncNote
+        : described.text, described.ok ? 'ok' : 'error');
+      refreshConnectionList(key);
       restore();
       return;
     }
 
-    if (button) button.textContent = 'Preparing sign-in…';
-    setStatus('Requesting a link token from the sync worker…', 'ok');
-
-    const { link_token: linkToken } = await workerPost('/link/token/create', {}, key);
-    if (!linkToken) throw new Error('The worker did not return a link_token.');
-
-    await loadPlaidSdk();
-    if (button) button.textContent = 'Waiting for bank sign-in…';
-    setStatus('Sign in to your bank in the Plaid window. This is a one-time link; later syncs reuse it.', 'ok');
-
-    const handler = window.Plaid.create({
-      token: linkToken,
-      onSuccess: async (publicToken, metadata) => {
-        try {
-          if (button) button.textContent = 'Fetching holdings…';
-          const payload = await workerPost('/link/token/exchange', { public_token: publicToken }, key);
-          const holdings = payload && payload.holdings;
-          if (!holdings || typeof holdings !== 'object') {
-            throw new Error('The worker returned no holdings.');
-          }
-          const source = payload.institution
-            || (metadata && metadata.institution && metadata.institution.name)
-            || 'Bank sync';
-          const kept = applyHoldings(holdings, source, 'plaid');
-          if (kept === 0) {
-            setStatus(unmatchedMessage(holdings, source, trackedSymbols()), 'error');
-            restore();
-            return;
-          }
-          setStatus(payload.persisted
-            ? `Synced ${kept} position(s) from ${source}. Connection saved, so future syncs skip the bank sign-in.${state.syncNote}`
-            : `Synced ${kept} position(s) from ${source}. Access token discarded (no KV bound).${state.syncNote}`, 'ok');
-        } catch (err) {
-          setStatus('Sync failed: ' + err.message, 'error');
-        } finally {
-          restore();
-        }
-      },
-      onExit: (err) => {
-        restore();
-        if (err) setStatus('Bank sign-in cancelled or errored: ' + (err.error_message || err.error_code || 'exited'), 'error');
-        else setStatus('Bank sign-in cancelled.', 'ok');
-      },
-      onEvent: () => {},
-    });
-    handler.open();
+    await openPlaidLink(key, button, restore);
   } catch (err) {
     setStatus('Could not start bank sync: ' + err.message, 'error');
     restore();
   }
 }
 
-async function disconnectBank() {
-  if (!requireWorker('Disconnecting')) return;
+/**
+ * Link an additional institution.
+ *
+ * Deliberately never refreshes: holdings live at more than one place, and this
+ * is the only route to the second one.
+ */
+async function addBankConnection() {
+  if (!requireWorker('Adding an institution')) return;
+  const { button, restore } = beginSync('add-bank');
   const key = getSyncKey(true);
-  if (!key) return;
-  if (!window.confirm('Disconnect the saved bank connection?\n\nHoldings already on this device are kept. Reconnecting later uses another of the 10 Plaid Trial slots.')) return;
+  if (!key) {
+    setStatus('A sync passphrase is required. Set SYNC_PASSPHRASE on the worker first.', 'error');
+    return;
+  }
+  try {
+    if (button) button.disabled = true;
+    await openPlaidLink(key, button, restore);
+  } catch (err) {
+    setStatus('Could not start bank sign-in: ' + err.message, 'error');
+    restore();
+  }
+}
+
+/**
+ * Forget one institution, or every one of them.
+ *
+ * The bare button still means "all", because that is what it says. The × on a
+ * connection row passes that connection's key, which is the only way to drop
+ * one bank while keeping another - relevant the moment there are two.
+ */
+async function disconnectBank(key) {
+  if (!requireWorker('Disconnecting')) return;
+  const pass = getSyncKey(true);
+  if (!pass) return;
+
+  const target = (state.connections || []).find((c) => c.key === key);
+  const what = target ? `the connection to ${target.institution || 'this bank'}` : 'every saved bank connection';
+  if (!window.confirm(`Disconnect ${what}?\n\nHoldings already on this device are kept. `
+    + 'Reconnecting later uses another of the 10 Plaid Trial slots.')) return;
+
   try {
     setStatus('Disconnecting…', 'ok');
-    await workerPost('/item/disconnect', {}, key);
-    setStatus('Bank connection removed. The stored access token is gone.', 'ok');
+    const result = await workerPost('/item/disconnect', key ? { key } : {}, pass);
+    setStatus(result && result.connected
+      ? `Disconnected. Still connected to ${(result.remaining || []).filter(Boolean).join(', ')}.`
+      : 'Bank connection removed. The stored access token is gone.', 'ok');
+    await refreshConnectionList(pass);
     renderSyncPill();
   } catch (err) {
     setStatus('Disconnect failed: ' + err.message, 'error');
@@ -1781,16 +2005,11 @@ async function syncFromSnaptrade() {
       return;
     }
 
-    const holdings = payload.holdings || {};
-    const source = payload.institution || 'SnapTrade';
-    const kept = applyHoldings(holdings, source, 'snaptrade');
-    if (kept === 0) {
-      setStatus(unmatchedMessage(holdings, source, trackedSymbols(),
-        `across ${payload.accounts} account(s)`), 'error');
-    } else {
-      setStatus(`Synced ${kept} position(s) from ${source} across ${payload.accounts} account(s).`
-        + state.syncNote, 'ok');
-    }
+    const connections = connectionsFrom(payload, 'SnapTrade');
+    const summary = applyConnections(connections, 'snaptrade');
+    const described = describeSync(summary, trackedSymbols());
+    setStatus(described.ok ? described.text + state.syncNote : described.text,
+      described.ok ? 'ok' : 'error');
   } catch (err) {
     setStatus('SnapTrade sync failed: ' + err.message, 'error');
   } finally {
@@ -2066,15 +2285,22 @@ async function init() {
   // passphrase, so stay quiet if it has not been entered yet.
   const disconnectBtn = document.getElementById('disconnect-bank');
   const snaptradeBtn = document.getElementById('sync-snaptrade');
+  const addBtn = document.getElementById('add-bank');
   if (disconnectBtn) disconnectBtn.hidden = true;
   if (snaptradeBtn) snaptradeBtn.hidden = true;
+  if (addBtn) addBtn.hidden = true;
   if (WORKER_BASE && getSyncKey(false)) {
     workerPost('/status', {}, getSyncKey(false))
       .then((s) => {
         if (disconnectBtn) disconnectBtn.hidden = !(s && s.connected);
         if (snaptradeBtn) snaptradeBtn.hidden = !(s && s.snaptradeConfigured);
+        // Only useful once something is linked: before that the main sync
+        // button already opens Plaid Link, so two buttons would do one job.
+        if (addBtn) addBtn.hidden = !(s && s.connected && s.plaidConfigured);
         // If only SnapTrade is set up, the Plaid button is just a dead end.
         if (syncBtn && s && s.snaptradeConfigured && !s.plaidConfigured) syncBtn.hidden = true;
+        state.connections = (s && s.connections) || [];
+        renderConnections();
       })
       .catch(() => { /* offline or bad key: leave hidden */ });
   }
@@ -2163,6 +2389,9 @@ if (typeof module !== 'undefined' && module.exports) {
     uniqueAccountId,
     overlappingSymbols,
     unmatchedMessage,
+    normalizePassphrase,
+    describeSync,
+    connectionsFrom,
     reconcileFlatHoldings,
     removeAccount,
     totalsFromLots,
