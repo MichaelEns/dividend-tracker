@@ -41,4 +41,9 @@ id = "51d8fcb24b6d44e7b4e980a25e532a89"
 [vars]
 PLAID_PRODUCTS = "investments"
 PLAID_COUNTRY_CODES = "US"
+# The balances page links Canadian retail banks, which have no investments
+# product. Asking for one does not merely return less: it hides TD Canada Trust
+# from Link's institution search entirely, so the bank looks unsupported.
+PLAID_BALANCE_PRODUCTS = "transactions"
+PLAID_BALANCE_COUNTRY_CODES = "CA"
 PLAID_CLIENT_NAME = "Dividend Tracker"

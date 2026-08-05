@@ -85,6 +85,19 @@ const PLAID_HOSTS = {
   production: "https://production.plaid.com",
 };
 
+// What a stored connection is for. The dividend page wants investments at a US
+// broker; the balances page wants a Canadian chequing account. Those need
+// different Plaid products and different country codes, and polling one for
+// the other's data only ever produces an error, so each token records which
+// page linked it.
+const SCOPE_HOLDINGS = "holdings";
+const SCOPE_BALANCES = "balances";
+
+/** Only ever the two known scopes, defaulting to the original behaviour. */
+function linkScope(value) {
+  return value === SCOPE_BALANCES ? SCOPE_BALANCES : SCOPE_HOLDINGS;
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
@@ -134,13 +147,16 @@ export default {
         return json(await readStatus(env), 200, cors);
       }
       if (url.pathname === "/link/token/create" && request.method === "POST") {
-        return json(await createLinkToken(env), 200, cors);
+        const body = await safeJson(request);
+        return json(await createLinkToken(env, linkScope(body && body.scope)), 200, cors);
       }
       if (url.pathname === "/link/token/exchange" && request.method === "POST") {
         const body = await safeJson(request);
         const publicToken = body && body.public_token;
         if (!publicToken) return json({ error: "missing public_token" }, 400, cors);
-        return json(await exchangeAndFetch(env, publicToken), 200, cors);
+        return json(
+          await exchangeAndFetch(env, publicToken, linkScope(body && body.scope)), 200, cors,
+        );
       }
       if (url.pathname === "/holdings/refresh" && request.method === "POST") {
         return json(await refreshHoldings(env), 200, cors);
@@ -297,14 +313,26 @@ async function plaid(env, path, body) {
   return payload || {};
 }
 
-async function createLinkToken(env) {
+async function createLinkToken(env, scope) {
   // A per-user id is required by Plaid. Keep it stable across re-links so the
   // same end user is not counted as a brand new one on every connect.
   const clientUserId = "divtracker-owner";
-  const products = (env.PLAID_PRODUCTS || "investments")
-    .split(",").map((s) => s.trim()).filter(Boolean);
-  const countryCodes = (env.PLAID_COUNTRY_CODES || "US")
-    .split(",").map((s) => s.trim()).filter(Boolean);
+  const balances = scope === SCOPE_BALANCES;
+
+  // A chequing account has no holdings and a Canadian bank is not in the US
+  // institution list, so the two pages cannot share one link token. Asking for
+  // `investments` in Canada does not merely return less - it hides TD Canada
+  // Trust from Link's search entirely, and the bank simply looks unsupported.
+  const products = (
+    balances
+      ? (env.PLAID_BALANCE_PRODUCTS || "transactions")
+      : (env.PLAID_PRODUCTS || "investments")
+  ).split(",").map((s) => s.trim()).filter(Boolean);
+  const countryCodes = (
+    balances
+      ? (env.PLAID_BALANCE_COUNTRY_CODES || "CA")
+      : (env.PLAID_COUNTRY_CODES || "US")
+  ).split(",").map((s) => s.trim()).filter(Boolean);
 
   const payload = await plaid(env, "/link/token/create", {
     user: { client_user_id: clientUserId },
@@ -316,7 +344,7 @@ async function createLinkToken(env) {
   return { link_token: payload.link_token };
 }
 
-async function exchangeAndFetch(env, publicToken) {
+async function exchangeAndFetch(env, publicToken, scope) {
   const exchange = await plaid(env, "/item/public_token/exchange", {
     public_token: publicToken,
   });
@@ -324,10 +352,16 @@ async function exchangeAndFetch(env, publicToken) {
   if (!accessToken) throw new Error("Plaid returned no access_token.");
 
   const canPersist = Boolean(tokenStore(env));
+  const balances = scope === SCOPE_BALANCES;
 
   let result;
   try {
-    result = await fetchHoldings(env, accessToken);
+    // A chequing account genuinely has no holdings, so asking for them would
+    // fail and the bank would never link at all. "A token we could not use"
+    // has to mean something different depending on what it was linked for.
+    result = balances
+      ? await fetchAccountSummary(env, accessToken)
+      : await fetchHoldings(env, accessToken);
   } catch (err) {
     // Never keep a token we could not actually use.
     if (!canPersist) {
@@ -351,6 +385,11 @@ async function exchangeAndFetch(env, publicToken) {
       institutionId: result.institutionId || null,
       access_token: accessToken,
       institution: result.institution,
+      // Which page linked this. A chequing account polled for holdings just
+      // produces a permanent error on the dividend page, so the reader has to
+      // know what each token is for. Absent means holdings: everything stored
+      // before this existed was linked from the dividend page.
+      scope: balances ? SCOPE_BALANCES : SCOPE_HOLDINGS,
       connectedAt: new Date().toISOString(),
     };
 
@@ -409,10 +448,20 @@ async function refreshHoldings(env) {
     throw new Error("Not connected yet. Use \u201cSync from bank\u201d once first.");
   }
 
+  // A chequing account linked from the balances page has no holdings, and
+  // asking it for some yields a permanent, unfixable error on this page. It is
+  // not a stale login, so it must not be reported as one.
+  const holdingItems = items.filter((item) => item.scope !== SCOPE_BALANCES);
+  if (holdingItems.length === 0) {
+    throw new Error(
+      "The only connections stored are bank accounts linked for balances. " +
+        "Use \u201cAdd an institution\u201d to connect a brokerage."
+    );
+  }
   const connections = [];
   const errors = [];
   let mutated = false;
-  for (const item of items) {
+  for (const item of holdingItems) {
     try {
       const result = await fetchHoldings(env, item.access_token);
       if (result.institution && result.institution !== item.institution) {
@@ -586,19 +635,52 @@ async function fetchHoldings(env, accessToken) {
   // display, because Plaid re-words those and a re-wording must not fork the
   // stored connection into a second one holding the same shares.
   const institutionId = (investments.item && investments.item.institution_id) || null;
-  let institutionName = null;
-  if (institutionId) {
-    try {
-      const inst = await plaid(env, "/institutions/get_by_id", {
-        institution_id: institutionId,
-        country_codes: (env.PLAID_COUNTRY_CODES || "US").split(",").map((s) => s.trim()),
-      });
-      if (inst && inst.institution && inst.institution.name) {
-        institutionName = inst.institution.name;
-      }
-    } catch { /* non-fatal */ }
-  }
+  const institutionName = await lookupInstitutionName(env, institutionId);
   return { holdings, institution: institutionName, institutionId, skipped };
+}
+
+/**
+ * The same identifying information as fetchHoldings, for a bank account.
+ *
+ * A chequing account has no holdings, so linking one from the balances page
+ * cannot go through the investments product at all. This proves the token
+ * works, and gets the institution name, without asking for anything a Canadian
+ * retail bank does not have.
+ */
+async function fetchAccountSummary(env, accessToken) {
+  const payload = await plaid(env, "/accounts/get", { access_token: accessToken });
+  const institutionId = (payload.item && payload.item.institution_id) || null;
+  const institutionName = await lookupInstitutionName(env, institutionId);
+  return {
+    holdings: {},
+    institution: institutionName,
+    institutionId,
+    skipped: [],
+    accounts: (payload.accounts || []).map(describeAccount),
+  };
+}
+
+/**
+ * Plaid's institution lookup is scoped by country, and a lookup that omits the
+ * institution's own country returns nothing rather than erroring - so a
+ * Canadian bank would simply show up unnamed. Both country lists are searched
+ * because the two pages deliberately use different ones.
+ */
+async function lookupInstitutionName(env, institutionId) {
+  if (!institutionId) return null;
+  const codes = [
+    ...(env.PLAID_COUNTRY_CODES || "US").split(","),
+    ...(env.PLAID_BALANCE_COUNTRY_CODES || "CA").split(","),
+  ].map((s) => s.trim()).filter(Boolean);
+  try {
+    const inst = await plaid(env, "/institutions/get_by_id", {
+      institution_id: institutionId,
+      country_codes: [...new Set(codes)],
+    });
+    return (inst && inst.institution && inst.institution.name) || null;
+  } catch {
+    return null; // non-fatal: the connection still works, it is just unnamed
+  }
 }
 
 /**
@@ -646,4 +728,4 @@ function aggregateHoldings(investments) {
 // Only functions may be exported from a Worker entry module - the runtime
 // treats named exports as entrypoints. Passphrase and origin helpers live in
 // auth.js, which tests import directly.
-export { aggregateHoldings, connectionKey, mergeHoldings, describeAccount };
+export { aggregateHoldings, connectionKey, mergeHoldings, describeAccount, linkScope };

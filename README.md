@@ -295,10 +295,15 @@ Item, no cost. **Disconnect bank** removes the stored token.
 | Endpoint | Purpose | Creates a Plaid Item? |
 | --- | --- | --- |
 | `POST /status` | Is a connection stored? | No |
-| `POST /link/token/create` | Start Plaid Link | No |
+| `POST /link/token/create` | Start Plaid Link (`{ scope }`) | No |
 | `POST /link/token/exchange` | Finish Link, store token, read holdings | **Yes** |
 | `POST /holdings/refresh` | Re-read holdings via stored token | No |
+| `POST /balances` | Read every account balance via stored tokens | No |
 | `POST /item/disconnect` | `/item/remove` + forget the token | No |
+
+`scope` is `"holdings"` (the default) or `"balances"` — see
+[Why a link has a scope](#why-a-link-has-a-scope). Both link endpoints take it,
+and they must agree.
 
 All of the above require `X-Sync-Key`. Only `/` and `/health` are unauthenticated.
 
@@ -858,12 +863,12 @@ CAD chequing account into a USD one would produce a confident, wrong number.
 
 All four were confirmed against the live Plaid institutions API:
 
-| Institution | Plaid id | `balance` | Sign-in |
-| --- | --- | --- | --- |
-| TD Canada Trust | `ins_42` | yes | credentials |
-| Scotiabank | `ins_38` | yes | credentials |
-| RBC Royal Bank | `ins_39` | yes | credentials |
-| Meridian Credit Union | `ins_118297` | yes | credentials |
+| Institution | Plaid id | `balance` | `investments` | Sign-in |
+| --- | --- | --- | --- | --- |
+| TD Canada Trust | `ins_42` | yes | **no** | credentials |
+| Scotiabank | `ins_38` | yes | yes | credentials |
+| RBC Royal Bank | `ins_39` | yes | **no** | credentials |
+| Meridian Credit Union | `ins_118297` | yes | **no** | credentials |
 
 None of them use OAuth, so Plaid takes the banking username and password rather
 than handing off to the bank's own sign-in page. TD and RBC have direct API
@@ -872,6 +877,31 @@ and correspondingly more fragile** — expect those two to need re-linking.
 
 `balance` cannot be an `initial_products` value. Initialise the Item with
 `auth` or `transactions`, then call `/accounts/balance/get`.
+
+### Why a link has a scope
+
+That `investments` column is the reason `/link/token/create` and
+`/link/token/exchange` take a `scope`. **Three of the four banks do not support
+the investments product at all**, and asking Link for it does not merely return
+less — it removes those institutions from Link's search entirely, so TD Canada
+Trust simply looks unsupported. The exchange then compounds it: it used to call
+`/investments/holdings/get` unconditionally and discard any token that failed,
+on the sound principle of never keeping a token it could not use. For a
+chequing account that principle needs a different definition of "use".
+
+So each stored connection records which page linked it:
+
+- `scope: "holdings"` (or absent, for anything linked before this existed) —
+  linked from the dividend page, US, `investments`, read for share counts.
+- `scope: "balances"` — linked from the balances page, CA, `transactions`,
+  read via `/accounts/balance/get`.
+
+`/holdings/refresh` skips the balances-scoped ones. Otherwise a chequing
+account would surface on the dividend page as a permanently failing connection,
+indistinguishable from a stale login that the user could actually fix.
+
+`/balances` deliberately reads **all** of them: cash sitting at a brokerage is
+still cash.
 
 ### Getting a real (free) Plaid account
 
@@ -1001,6 +1031,23 @@ cd worker; npx wrangler dev --port 8787 --local
 # then, in another shell:
 $env:PLAID_CLIENT_ID="..."; $env:PLAID_SECRET="..."
 node tests\balances.cjs "<edge path>" <passphrase>
+```
+
+`tests/balances-scope.cjs` covers the scope contract, which the unit tests can
+only half-check: they assert the page *asks* for the balances scope, not that
+the worker honours it. It links a sandbox institution that genuinely lacks the
+investments product — `ins_130358`, standing in for TD Canada Trust — and
+asserts it links, gets named, reports accounts, and does **not** turn into a
+failing connection on the dividend page.
+
+The stock sandbox bank cannot demonstrate any of this: `ins_109508` supports
+investments, so the pre-fix code passes against it. Picking an institution that
+reproduces the production shape was the difference between a test that proves
+the fix and one that just runs.
+
+```powershell
+$env:PLAID_CLIENT_ID="..."; $env:PLAID_SECRET="..."; $env:SYNC_KEY="<folded passphrase>"
+node tests\balances-scope.cjs
 ```
 
 The unit tests alongside it include one that is worth calling out: it asserts

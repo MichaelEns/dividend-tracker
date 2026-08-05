@@ -399,15 +399,24 @@ async function linkBank() {
   const original = button ? button.textContent : '';
   try {
     if (button) { button.disabled = true; button.textContent = 'Preparing sign-in…'; }
-    const { link_token: linkToken } = await workerPost('/link/token/create', {}, key);
+    const { link_token: linkToken } = await workerPost(
+      '/link/token/create', { scope: 'balances' }, key,
+    );
     if (!linkToken) throw new Error('The worker did not return a link_token.');
     await loadPlaidSdk();
     setStatus('Sign in to your bank in the Plaid window. Each bank is linked once.', 'ok');
 
     const handler = window.Plaid.create({
       token: linkToken,
-      onSuccess: async () => {
+      onSuccess: async (publicToken) => {
         try {
+          // Link hands back a short-lived public token and nothing else. It has
+          // to be exchanged for the long-lived one the worker stores, or the
+          // sign-in succeeds and the bank is never actually connected.
+          setStatus('Linked. Storing the connection…', 'ok');
+          await workerPost(
+            '/link/token/exchange', { public_token: publicToken, scope: 'balances' }, key,
+          );
           setStatus('Linked. Reading balances…', 'ok');
           await refreshBalances();
           await refreshConnections(key);

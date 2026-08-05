@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
-import { describeAccount } from '../worker/src/index.js';
+import { describeAccount, linkScope } from '../worker/src/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -253,8 +253,54 @@ test('the balances page folds a passphrase exactly as the tracker does', () => {
   assert.ok(/^[a-z0-9]+$/.test(straight), `must be header-safe ASCII, got ${straight}`);
 });
 
-/* ----------------------------------------------------------------- styling */
+/* ------------------------------------------------------------------- scope */
 
+test('a link is for holdings unless it explicitly says balances', () => {
+  assert.strictEqual(linkScope('balances'), 'balances');
+  assert.strictEqual(linkScope('holdings'), 'holdings');
+  assert.strictEqual(linkScope(undefined), 'holdings');
+  assert.strictEqual(linkScope(''), 'holdings');
+  assert.strictEqual(linkScope(null), 'holdings');
+});
+
+test('an unknown scope falls back to holdings rather than being trusted', () => {
+  // The value arrives in a request body, so it is attacker-controlled in
+  // principle and typo-prone in practice. Anything unrecognised must land on
+  // the behaviour that existed before scopes did.
+  assert.strictEqual(linkScope('BALANCES'), 'holdings');
+  assert.strictEqual(linkScope('balance'), 'holdings');
+  assert.strictEqual(linkScope({}), 'holdings');
+  assert.strictEqual(linkScope(['balances']), 'holdings');
+});
+
+test('the balances page asks for the balances scope on both link calls', () => {
+  // Getting a link token for `investments` in the US hides every Canadian
+  // retail bank from Link's search, so the page looks broken rather than
+  // unsupported. Both calls have to agree, or the exchange stores the wrong
+  // kind of record and the dividend page starts reporting a phantom failure.
+  const js = fs.readFileSync(path.join(__dirname, '..', 'docs', 'balances.js'), 'utf8');
+  for (const endpoint of ['/link/token/create', '/link/token/exchange']) {
+    const at = js.indexOf(endpoint);
+    assert.ok(at > 0, `${endpoint} is never called`);
+    const call = js.slice(at, at + 220);
+    assert.ok(/scope:\s*'balances'/.test(call), `${endpoint} does not pass the balances scope`);
+  }
+});
+
+test('the public token from Link is exchanged, not discarded', () => {
+  // Plaid Link hands the public token to onSuccess and nothing else. Ignoring
+  // it leaves the sign-in looking successful with no connection stored at all,
+  // which is silent: the page just shows no accounts afterwards.
+  const js = fs.readFileSync(path.join(__dirname, '..', 'docs', 'balances.js'), 'utf8');
+  const at = js.indexOf('onSuccess:');
+  assert.ok(at > 0, 'onSuccess is never defined');
+  const handler = js.slice(at, at + 700);
+  assert.ok(/onSuccess:\s*async\s*\(\s*\w+/.test(handler),
+    'onSuccess ignores its public_token argument');
+  assert.ok(/public_token:/.test(handler), 'onSuccess never exchanges the public token');
+});
+
+/* ----------------------------------------------------------------- styling */
 test('every class the balances page uses is actually styled', () => {
   // Inventing a class name is silent: the markup renders, just unstyled, and
   // it looks plausible enough in a screenshot to miss. This page shipped with

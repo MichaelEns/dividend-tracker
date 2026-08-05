@@ -191,16 +191,16 @@ async function main() {
       view.institutions.join(' | '));
     check('accounts rendered', view.rows.length >= 20, 'rows=' + view.rows.length);
     check('cash and owed are separate groups',
-      view.groups.some(g => /^Cash/.test(g)) && view.groups.some(g => /^Owed/.test(g)),
+      view.groups.some(g => /^cash/i.test(g)) && view.groups.some(g => /^owed/i.test(g)),
       view.groups.join(' | '));
 
     // A heading that says "Owed" and then shows a minus reads as the opposite.
     check('the Owed heading does not contradict the rows under it',
-      view.groups.filter(g => /^Owed/.test(g)).every(g => !/-|\u2212/.test(g)),
-      view.groups.filter(g => /^Owed/.test(g)).join(' | ').replace(/\n/g, ' '));
+      view.groups.filter(g => /^owed/i.test(g)).every(g => !/-|\u2212/.test(g)),
+      view.groups.filter(g => /^owed/i.test(g)).join(' | ').replace(/\n/g, ' '));
     check('the Owed card does not contradict the rows either',
-      view.cards.filter(c => /^Owed/.test(c)).every(c => !/-|\u2212/.test(c)),
-      view.cards.filter(c => /^Owed/.test(c)).join(' | '));
+      view.cards.filter(c => /^owed/i.test(c)).every(c => !/-|\u2212/.test(c)),
+      view.cards.filter(c => /^owed/i.test(c)).join(' | '));
 
     const owed = view.rows.filter(r => r.owed);
     check('credit and loan accounts are marked as owed', owed.length >= 6, 'owed rows=' + owed.length);
@@ -212,7 +212,8 @@ async function main() {
     check('cash amounts are not negated', cash.every(r => !/^-/.test(r.amount)),
       cash.slice(0, 3).map(r => r.name + ' = ' + r.amount.replace(/\n/g, ' ')).join(' | '));
 
-    check('a Net card is present', view.cards.some(c => /^Net/.test(c)), view.cards.join(' || '));
+    // innerText applies text-transform, so the labels come back uppercased.
+    check('a Net card is present', view.cards.some(c => /^net/i.test(c)), view.cards.join(' || '));
     check('the header says how old the reading is', /read /.test(view.meta), view.meta);
 
     // Cached figures must survive a cold open, so the page is never blank.
