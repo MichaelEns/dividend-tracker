@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-04T23:57:24+00:00",
-  "asOfDate": "2026-08-04",
+  "generatedAt": "2026-08-05T01:50:06+00:00",
+  "asOfDate": "2026-08-05",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -486,7 +486,7 @@
           "kind": "income",
           "pay_date": "2027-03-12",
           "source": "projection",
-          "confidence": 0.793,
+          "confidence": 0.794,
           "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
         },
         {
@@ -552,7 +552,7 @@
           "kind": "income",
           "pay_date": "2028-09-08",
           "source": "projection",
-          "confidence": 0.655,
+          "confidence": 0.656,
           "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
         },
         {
@@ -563,7 +563,7 @@
           "kind": "income",
           "pay_date": "2028-12-10",
           "source": "projection",
-          "confidence": 0.634,
+          "confidence": 0.635,
           "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
         },
         {
@@ -574,7 +574,7 @@
           "kind": "income",
           "pay_date": "2029-03-11",
           "source": "projection",
-          "confidence": 0.614,
+          "confidence": 0.615,
           "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
         },
         {
@@ -1110,7 +1110,7 @@
           "kind": "distribution",
           "pay_date": null,
           "source": "projection",
-          "confidence": 0.719,
+          "confidence": 0.72,
           "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
         },
         {
@@ -1121,7 +1121,7 @@
           "kind": "distribution",
           "pay_date": null,
           "source": "projection",
-          "confidence": 0.71,
+          "confidence": 0.711,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
@@ -1132,7 +1132,7 @@
           "kind": "distribution",
           "pay_date": null,
           "source": "projection",
-          "confidence": 0.638,
+          "confidence": 0.639,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1463,7 +1463,7 @@
           "kind": "distribution",
           "pay_date": null,
           "source": "projection",
-          "confidence": 0.569,
+          "confidence": 0.57,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
         },
         {
