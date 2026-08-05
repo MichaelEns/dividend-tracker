@@ -3,20 +3,20 @@
   "name": "Bank Balances",
   "short_name": "Balances",
   "description": "Chequing, savings and card balances read on demand from your own worker.",
-  "start_url": "./balances.html",
-  "scope": "./balances.html",
+  "start_url": "/dividend-tracker/balances.html",
+  "scope": "/dividend-tracker/balances.html",
   "display": "standalone",
   "background_color": "#0b57d0",
   "theme_color": "#0b57d0",
   "icons": [
     {
-      "src": "icon-balances.svg",
+      "src": "/dividend-tracker/icon-balances.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-balances-180.png",
+      "src": "/dividend-tracker/icon-balances-180.png",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"

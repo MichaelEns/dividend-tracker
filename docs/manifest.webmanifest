@@ -3,20 +3,20 @@
   "name": "Dividend & Distribution Tracker",
   "short_name": "Dividends",
   "description": "Historical, announced and projected dividends and distributions.",
-  "start_url": "./index.html",
-  "scope": "./",
+  "start_url": "/dividend-tracker/index.html",
+  "scope": "/dividend-tracker/",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
   "icons": [
     {
-      "src": "icon.svg",
+      "src": "/dividend-tracker/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-180.png",
+      "src": "/dividend-tracker/icon-180.png",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"

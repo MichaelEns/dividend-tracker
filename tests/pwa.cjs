@@ -20,6 +20,11 @@ const BASE = process.argv[3] || null;
 const SITE_PORT = 8765;
 const CDP_PORT = 9255;
 const DOCS = path.join(__dirname, '..', 'docs');
+// Production is a GitHub Pages *project* site, so it is served from a
+// subdirectory rather than the origin root, and the manifests use absolute
+// paths that say so. Serving docs/ at the root locally would make those paths
+// 404 here and nowhere else, so the harness mirrors the published layout.
+const PUBLISHED_AT = '/dividend-tracker/';
 
 let fails = 0;
 function check(name, cond, extra) {
@@ -35,7 +40,9 @@ const TYPES = {
 
 function serve() {
   const server = http.createServer((req, res) => {
-    const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
+    let p = decodeURIComponent(req.url.split('?')[0]);
+    if (!p.startsWith(PUBLISHED_AT)) { res.writeHead(404).end('outside the published path'); return; }
+    const rel = p.slice(PUBLISHED_AT.length) || 'index.html';
     const file = path.join(DOCS, rel);
     if (!file.startsWith(DOCS)) { res.writeHead(403).end(); return; }
     fs.readFile(file, (err, buf) => {
@@ -77,7 +84,7 @@ function rpc(ws, id, method, params) {
 async function main() {
   if (!BROWSER) throw new Error('usage: node tests/pwa.cjs <browser> [url-base]');
   const server = BASE ? null : await serve();
-  const base = BASE || `http://127.0.0.1:${SITE_PORT}/`;
+  const base = BASE || `http://127.0.0.1:${SITE_PORT}${PUBLISHED_AT}`;
   const profile = path.join(os.tmpdir(), 'divpwa-' + Date.now());
   const proc = spawn(BROWSER, [
     '--headless=new', `--remote-debugging-port=${CDP_PORT}`, '--remote-allow-origins=*',

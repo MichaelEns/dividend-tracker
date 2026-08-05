@@ -17,6 +17,12 @@ const DOCS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'docs
 const read = (f) => fs.readFileSync(path.join(DOCS, f), 'utf8');
 const manifest = (f) => JSON.parse(read(f));
 
+// Manifest members are absolute published paths (/dividend-tracker/icon.svg),
+// which is deliberate, so mapping one back to a file on disk means stripping
+// the path the site is published at rather than joining it to docs/.
+const PUBLISHED_AT = '/dividend-tracker/';
+const docsPath = (published) => path.join(DOCS, published.replace(PUBLISHED_AT, ''));
+
 const APPS = [
   { manifest: 'manifest.webmanifest', page: 'index.html', title: 'Dividends' },
   { manifest: 'balances.webmanifest', page: 'balances.html', title: 'Balances' },
@@ -40,6 +46,46 @@ test('both manifests are valid JSON with the members an install needs', () => {
 test('each app points at its own start_url', () => {
   assert.match(manifest('manifest.webmanifest').start_url, /index\.html$/);
   assert.match(manifest('balances.webmanifest').start_url, /balances\.html$/);
+});
+
+test('every manifest URL is absolute, never a "./" relative form', () => {
+  // A relative start_url is resolved against the manifest URL by the spec, but
+  // an implementation that resolves it against the *origin* instead turns
+  // "./balances.html" into michaelens.github.io/balances.html - a 404 whose
+  // only visible symptom is the bare domain in an in-app browser. Absolute
+  // paths cannot be resolved against the wrong base.
+  for (const app of APPS) {
+    const m = manifest(app.manifest);
+    const urls = [m.start_url, m.scope, m.id, ...m.icons.map((i) => i.src)];
+    for (const u of urls) {
+      assert.ok(u.startsWith('/'),
+        `${app.manifest}: "${u}" is relative; it must start with /`);
+      assert.ok(!u.includes('./'), `${app.manifest}: "${u}" still contains a ./ segment`);
+    }
+  }
+});
+
+test('the manifest paths match where the site is actually published', () => {
+  // Absolute paths buy determinism at the cost of hard-coding the Pages path.
+  // If the repo is ever renamed, this is the test that says so.
+  for (const app of APPS) {
+    const m = manifest(app.manifest);
+    for (const u of [m.start_url, m.scope, m.id, ...m.icons.map((i) => i.src)]) {
+      assert.ok(u.startsWith(PUBLISHED_AT),
+        `${app.manifest}: "${u}" does not live under ${PUBLISHED_AT}`);
+    }
+  }
+});
+
+test('every absolute manifest path names a file that exists', () => {
+  // An absolute path is only as good as its accuracy, and a wrong one 404s in
+  // exactly the way a relative one did.
+  for (const app of APPS) {
+    const m = manifest(app.manifest);
+    for (const u of [m.start_url, ...m.icons.map((i) => i.src)]) {
+      assert.ok(fs.existsSync(docsPath(u)), `${app.manifest}: ${u} does not exist`);
+    }
+  }
 });
 
 /* ------------------------------------------------------------- identity */
@@ -86,7 +132,7 @@ test('the balances scope is narrow enough not to swallow the dividend app', () =
 test('every icon a manifest references exists', () => {
   for (const app of APPS) {
     for (const icon of manifest(app.manifest).icons) {
-      const file = path.join(DOCS, icon.src);
+      const file = docsPath(icon.src);
       assert.ok(fs.existsSync(file), `${app.manifest} references a missing icon: ${icon.src}`);
       assert.ok(fs.statSync(file).size > 0, `${icon.src} is empty`);
     }
@@ -100,7 +146,7 @@ test('the two apps do not share an icon', () => {
   for (const src of srcs[0]) {
     assert.ok(!srcs[1].includes(src), `both apps use ${src} as their icon`);
   }
-  const bytes = srcs.map((list) => list.map((s) => fs.readFileSync(path.join(DOCS, s)).toString('base64')));
+  const bytes = srcs.map((list) => list.map((s) => fs.readFileSync(docsPath(s)).toString('base64')));
   for (const b of bytes[0]) {
     assert.ok(!bytes[1].includes(b), 'the two icons have different names but identical contents');
   }
@@ -197,12 +243,15 @@ test('everything both apps need to install is precached', () => {
   const sw = read('sw.js');
   const shell = sw.slice(sw.indexOf('const SHELL'), sw.indexOf('];', sw.indexOf('const SHELL')));
   const wanted = new Set();
+  // Manifest members are absolute paths but the service worker caches by
+  // filename relative to its own scope, so compare the last segment.
+  const fileOf = (u) => u.split('/').pop();
   for (const app of APPS) {
     wanted.add(app.manifest);
     wanted.add(app.page);
-    for (const icon of manifest(app.manifest).icons) wanted.add(icon.src);
+    for (const icon of manifest(app.manifest).icons) wanted.add(fileOf(icon.src));
     const touch = read(app.page).match(/rel="apple-touch-icon"[^>]+href="([^"]+)"/);
-    if (touch) wanted.add(touch[1]);
+    if (touch) wanted.add(fileOf(touch[1]));
   }
   const missing = [...wanted].filter((f) => !shell.includes(`'./${f}'`));
   assert.deepStrictEqual(missing, [], `not precached by sw.js: ${missing.join(', ')}`);
