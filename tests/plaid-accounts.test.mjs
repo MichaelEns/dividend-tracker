@@ -131,8 +131,30 @@ test('the whole exchange runs on one account, not a mixture', async () => {
   }
 });
 
-/* ------------------------------------------------- reading stored tokens */
+test('the bank consent screen names the app doing the asking', async () => {
+  // client_name is what the bank shows the user while they decide whether to
+  // hand over their banking login. "Dividend Tracker" asking for a chequing
+  // account reads like the wrong app got hold of it.
+  const env = makeEnv();
+  const stub = stubPlaid({ '/link/token/create': { link_token: 'lt' } });
+  const names = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    names.push(JSON.parse(opts.body).client_name);
+    return original ? { ok: true, status: 200, async text() { return '{"link_token":"lt"}'; } } : null;
+  };
+  try {
+    await post('/link/token/create', {}, env);
+    await post('/link/token/create', { scope: 'balances' }, env);
+  } finally { globalThis.fetch = original; stub.restore(); }
 
+  assert.strictEqual(names[0], 'Dividend Tracker');
+  assert.notStrictEqual(names[1], 'Dividend Tracker',
+    'a bank balances consent screen should not be branded as the dividend app');
+  assert.ok(names[1] && names[1].length > 0);
+});
+
+/* ------------------------------------------------- reading stored tokens */
 /** Two stored connections, one from each account. */
 function seededEnv() {
   return makeEnv({

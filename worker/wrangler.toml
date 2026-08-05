@@ -61,3 +61,6 @@ PLAID_COUNTRY_CODES = "US"
 PLAID_BALANCE_PRODUCTS = "transactions"
 PLAID_BALANCE_COUNTRY_CODES = "CA"
 PLAID_CLIENT_NAME = "Dividend Tracker"
+# Shown on the bank's own consent screen while the user decides whether to hand
+# over their banking login, so it names the app that is actually asking.
+PLAID_BALANCE_CLIENT_NAME = "Bank Balances"

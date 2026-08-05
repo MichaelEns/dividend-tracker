@@ -395,7 +395,13 @@ async function createLinkToken(env, scope) {
 
   const payload = await plaid(env, "/link/token/create", {
     user: { client_user_id: clientUserId },
-    client_name: env.PLAID_CLIENT_NAME || "Dividend Tracker",
+    // Shown on the bank's own consent screen. "Dividend Tracker" asking for a
+    // chequing account reads like the wrong app got hold of the login, at the
+    // exact moment the user is deciding whether to trust it.
+    client_name: (balances && env.PLAID_BALANCE_CLIENT_NAME)
+      || (balances ? "Bank Balances" : null)
+      || env.PLAID_CLIENT_NAME
+      || "Dividend Tracker",
     products,
     country_codes: countryCodes,
     language: "en",
