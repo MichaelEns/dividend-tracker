@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Bank balances">
+  <rect width="512" height="512" rx="96" fill="#0b57d0"/>
+  <polygon points="256,96 438,202 74,202" fill="#ffffff"/>
+  <rect x="74" y="212" width="364" height="28" fill="#ffffff"/>
+  <rect x="106" y="258" width="54" height="114" fill="#ffffff"/>
+  <rect x="188" y="258" width="54" height="114" fill="#ffffff"/>
+  <rect x="270" y="258" width="54" height="114" fill="#ffffff"/>
+  <rect x="352" y="258" width="54" height="114" fill="#ffffff"/>
+  <rect x="74" y="388" width="364" height="28" fill="#ffffff"/>
+  <circle cx="362" cy="362" r="62" fill="#a7f3d0"/>
+  <circle cx="362" cy="362" r="46" fill="#0b57d0"/>
+  <circle cx="362" cy="362" r="32" fill="#a7f3d0"/>
+</svg>

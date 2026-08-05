@@ -184,8 +184,17 @@ function renderMeta() {
 function renderSummary() {
   const box = document.getElementById('summary-cards');
   if (!box) return;
+  // The panel is hidden rather than left empty: an empty rounded card is the
+  // first thing you see before any bank is linked, and it reads as something
+  // that failed to load.
+  const panel = document.getElementById('summary-panel');
   const all = state.institutions.flatMap((i) => i.accounts || []);
-  if (all.length === 0) { box.innerHTML = ''; return; }
+  if (all.length === 0) {
+    box.innerHTML = '';
+    if (panel) panel.hidden = true;
+    return;
+  }
+  if (panel) panel.hidden = false;
 
   const inGroup = (id) => all.filter((a) => groupOf(a) === id);
   const cards = [

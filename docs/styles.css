@@ -572,9 +572,11 @@ tfoot td { font-weight: 650; border-top: 2px solid var(--border); }
 
 /* ------------------------------------------------------------ balances page */
 
-.page-nav { margin-top: 6px; font-size: .85rem; }
-.page-nav a { color: var(--accent); text-decoration: none; }
-.page-nav a:hover { text-decoration: underline; }
+/* The two apps install separately, so each footer says where the other lives.
+ * Before you install the second one, this link is the only way to find it. */
+.app-link a { color: var(--accent); text-decoration: none; }
+.app-link a:hover { text-decoration: underline; }
+
 
 .meta.stale { color: var(--warn); }
 .meta.ancient { color: var(--bad); }

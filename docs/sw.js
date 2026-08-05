@@ -15,7 +15,7 @@
  * The cache is still filled on install so a first-ever offline open works, and
  * every successful response refreshes it.
  */
-const CACHE = 'divtracker-v15';
+const CACHE = 'divtracker-v16';
 const SHELL = [
   './',
   './index.html',
@@ -25,7 +25,11 @@ const SHELL = [
   './balances.js',
   './config.js',
   './manifest.webmanifest',
+  './balances.webmanifest',
   './icon.svg',
+  './icon-balances.svg',
+  './icon-180.png',
+  './icon-balances-180.png',
 ];
 
 /*
@@ -55,11 +59,20 @@ self.addEventListener('activate', (event) => {
  * data.json is requested with a cache-busting query string, and a navigation
  * arrives as the bare directory URL. Both have to map onto the key they were
  * stored under or the offline fallback silently misses.
+ *
+ * Navigations are mapped to their own page, not to index.html. Two separate
+ * apps are served from this scope, and collapsing every navigation onto one of
+ * them broke both directions: opening Balances offline served the dividend
+ * page, and opening it online cached the balances HTML *under* the index key,
+ * so the dividend app then opened to Balances the next time it was offline.
  */
 function cacheKeyFor(request) {
   const url = new URL(request.url);
   if (url.pathname.endsWith('/data.json')) return './data.json';
-  if (request.mode === 'navigate') return './index.html';
+  if (request.mode === 'navigate') {
+    const file = url.pathname.split('/').pop();
+    return file ? `./${file}` : './index.html';
+  }
   return request;
 }
 

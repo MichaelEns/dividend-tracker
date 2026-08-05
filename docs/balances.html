@@ -4,9 +4,20 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Balances</title>
+  <meta name="description" content="Chequing, savings and card balances read on demand from your own worker." />
   <meta name="theme-color" content="#0b57d0" />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="balances.webmanifest" />
+  <link rel="icon" href="icon-balances.svg" type="image/svg+xml" />
+  <!--
+    iOS installs whatever page you were on rather than the manifest's start_url,
+    and ignores SVG here, so the touch icon must be a PNG or the home screen
+    falls back to a screenshot of the page.
+  -->
+  <link rel="apple-touch-icon" href="icon-balances-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Balances" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="styles.css" />
   <script src="config.js"></script>
 </head>
@@ -18,13 +29,10 @@
   <header class="topbar">
     <h1>Balances</h1>
     <p class="meta" id="meta">Loading…</p>
-    <nav class="page-nav">
-      <a href="index.html">Dividends &amp; distributions →</a>
-    </nav>
   </header>
 
   <main>
-    <section class="panel">
+    <section class="panel" id="summary-panel" hidden>
       <div id="summary-cards" class="cards"></div>
     </section>
 
@@ -57,11 +65,17 @@
       </p>
     </section>
 
-    <p class="privacy">
-      <strong>Private to this device.</strong> Balances are fetched from your own
-      worker and cached only in this browser's local storage. Nothing is uploaded
-      and nothing is part of the published page.
-    </p>
+    <footer class="footer">
+      <p class="privacy">
+        <strong>Private to this device.</strong> Balances are fetched from your own
+        worker and cached only in this browser's local storage. Nothing is uploaded
+        and nothing is part of the published page.
+      </p>
+      <p class="app-link">
+        Dividends and distributions are a separate app:
+        <a href="index.html">open it</a>, then add it to your home screen.
+      </p>
+    </footer>
   </main>
 
   <script src="balances.js"></script>

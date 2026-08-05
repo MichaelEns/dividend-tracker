@@ -73,6 +73,9 @@ jobs:
       - name: Run bank balance tests
         run: node --test tests/balances.test.mjs
 
+      - name: Run PWA manifest tests
+        run: node --test tests/pwa.test.mjs
+
       - name: Refresh data.json
         run: python build.py --verbose
 

@@ -101,6 +101,7 @@ async function main() {
         text: document.getElementById('empty-state').innerText.trim(),
       } : null,
       panelHidden: document.getElementById('balances-panel').hidden,
+      summaryHidden: document.getElementById('summary-panel').hidden,
       addHidden: document.getElementById('add-bank-balances').hidden,
       status: document.getElementById('sync-status').textContent.trim(),
       backLink: !!document.querySelector('.page-nav a'),
@@ -116,6 +117,9 @@ async function main() {
       view.empty && view.empty.hidden === false && view.empty.text.length > 20,
       view.empty && view.empty.text.replace(/\n/g, ' | '));
     check('the link-a-bank button is offered', view.addHidden === false);
+    check('no empty summary card is shown before anything is linked',
+      view.summaryHidden === true,
+      'an empty rounded panel reads as something that failed to load');
     check('no error is shown when nothing is wrong',
       !/error|failed|could not/i.test(view.status), view.status);
     check('no console errors', problems.length === 0, problems.slice(0, 3).join(' | '));

@@ -7,7 +7,17 @@
 <meta name="description" content="Historical, announced and projected dividends and distributions." />
 <title>Dividend &amp; Distribution Tracker</title>
 <link rel="manifest" href="manifest.webmanifest" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128176;</text></svg>" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<!--
+  iOS installs whatever page you were on rather than the manifest's start_url,
+  and ignores SVG here, so the touch icon must be a PNG or the home screen
+  falls back to a screenshot of the page.
+-->
+<link rel="apple-touch-icon" href="icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Dividends" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <link rel="stylesheet" href="styles.css" />
 <script src="config.js"></script>
 </head>
@@ -17,9 +27,6 @@
   <div class="topbar-inner">
     <h1>Dividends &amp; Distributions</h1>
     <p class="meta" id="meta">Loading…</p>
-    <nav class="page-nav">
-      <a href="balances.html">Bank balances →</a>
-    </nav>
   </div>
 </header>
 
@@ -162,6 +169,10 @@
       tax or financial advice.
     </p>
     <p id="sources" class="sources"></p>
+    <p class="app-link">
+      Bank balances are a separate app:
+      <a href="balances.html">open it</a>, then add it to your home screen.
+    </p>
   </footer>
 </main>
 

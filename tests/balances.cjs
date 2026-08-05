@@ -178,6 +178,7 @@ async function main() {
         cards: [...document.querySelectorAll('#summary-cards .card')].map(e => e.innerText.replace(/\\n/g, ' | ')),
         rows,
         panelHidden: document.getElementById('balances-panel').hidden,
+        summaryHidden: document.getElementById('summary-panel').hidden,
         consoleClean: true,
       });
     })()`));
@@ -187,6 +188,8 @@ async function main() {
     for (const c of view.cards) console.log('         ' + c);
 
     check('the balances panel is shown', view.panelHidden === false);
+    check('the summary panel is shown once there is something to summarise',
+      view.summaryHidden === false, 'summary-panel hidden=' + view.summaryHidden);
     check('both institutions rendered', view.institutions.length === 2,
       view.institutions.join(' | '));
     check('accounts rendered', view.rows.length >= 20, 'rows=' + view.rows.length);

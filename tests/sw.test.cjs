@@ -198,6 +198,46 @@ test('an offline navigation falls back to the cached shell', async () => {
   assert.strictEqual(response.body, '<html>shell</html>');
 });
 
+test('an offline navigation serves the page asked for, not always index', async () => {
+  // Two separate apps live in this scope. Collapsing every navigation onto
+  // index.html meant opening Balances offline showed the dividend page.
+  const worker = loadWorker({
+    cache: {
+      './index.html': '<html>dividends</html>',
+      './balances.html': '<html>balances</html>',
+    },
+    fetch: async () => { throw new Error('offline'); },
+  });
+  const response = await handleFetch(
+    worker, 'https://example.test/balances.html', { mode: 'navigate' },
+  );
+  assert.strictEqual(response.body, '<html>balances</html>',
+    'the Balances app opened to the dividend page');
+});
+
+test('a navigation is cached under its own page, not over index.html', async () => {
+  // The nastier half of the same bug: fetching balances.html online wrote it
+  // to the index.html key, so the *dividend* app then opened to Balances the
+  // next time it was offline. The damage outlived the navigation that caused it.
+  const worker = loadWorker({
+    cache: { './index.html': '<html>dividends</html>' },
+    fetch: async () => OK('<html>balances</html>'),
+  });
+  await handleFetch(worker, 'https://example.test/balances.html', { mode: 'navigate' });
+  assert.strictEqual(worker.caches.store.get('./balances.html'), '<html>balances</html>');
+  assert.strictEqual(worker.caches.store.get('./index.html'), '<html>dividends</html>',
+    'navigating to Balances overwrote the cached dividend page');
+});
+
+test('a navigation to the bare directory still maps to index.html', async () => {
+  const worker = loadWorker({
+    cache: { './index.html': '<html>dividends</html>' },
+    fetch: async () => { throw new Error('offline'); },
+  });
+  const response = await handleFetch(worker, 'https://example.test/', { mode: 'navigate' });
+  assert.strictEqual(response.body, '<html>dividends</html>');
+});
+
 test('cross-origin and non-GET requests are left alone', async () => {
   const worker = loadWorker({ fetch: async () => OK('x') });
   assert.strictEqual(handleFetch(worker, 'https://cdn.example.com/x.js'), null,
@@ -217,6 +257,8 @@ test('install precaches the shell and takes over immediately', async () => {
   assert.strictEqual(worker.calls.skipWaiting, 1, 'install must call skipWaiting()');
   assert.ok(worker.caches.store.has('./app.js'), 'the shell was not precached for offline use');
   assert.ok(worker.caches.store.has('./index.html'));
+  assert.ok(worker.caches.store.has('./balances.html'),
+    'the Balances app must work offline too, or installing it is pointless');
 });
 
 test('activate drops old caches and claims open pages', async () => {
