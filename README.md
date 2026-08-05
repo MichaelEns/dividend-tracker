@@ -1050,6 +1050,15 @@ $env:PLAID_CLIENT_ID="..."; $env:PLAID_SECRET="..."; $env:SYNC_KEY="<folded pass
 node tests\balances-scope.cjs
 ```
 
+`tests/balances-live.cjs` loads the **published** page and checks the state it
+will actually be in until a Plaid Trial account exists: nothing linked. That
+state has to explain itself rather than showing a blank panel or an error that
+is not an error. It needs no credentials and no local server.
+
+```powershell
+node tests\balances-live.cjs "<edge path>" [url]
+```
+
 The unit tests alongside it include one that is worth calling out: it asserts
 that **every class name used by `balances.html` and `balances.js` is actually
 styled in `styles.css`**. Inventing a class name fails silently — the markup
