@@ -16,19 +16,28 @@ browser's localStorage.
 - Officially announced but unpaid dividends (Nasdaq API).
 - Projected future dividends for anything not yet declared, tagged
   `status="projected"` with confidence + basis strings.
+- **A pay date on every row** — from Nasdaq for equities, estimated as the next
+  business day after the ex-date for funds, which no free feed covers. The
+  table, the portrait fold and the "Next payment" card all lead with it, because
+  the ex-date says which dividend you qualified for and the pay date says when
+  the money arrives.
 - Static output (`docs/data.json`) rebuilt daily via GitHub Actions.
 - PWA: works offline once opened; installable on iOS/Android home screen.
-- Optional Plaid federated sync → shares cached in localStorage, freshness pill
-  interpolates **green → red over one quarter** (92 days) so you know when to
-  refresh.
+- **Refreshes itself** — rates on every open, resume and pull; share counts on
+  every pull and on open/resume once six hours old. See
+  [Refreshing without pressing Sync](#refreshing-without-pressing-sync).
+- Federated share counts via **SnapTrade** (free Personal tier, covers Fidelity,
+  Robinhood, U.S. Bank) or Plaid. Nothing is published — counts live only in
+  your browser's localStorage.
+- **Only spendable accounts count** by default: dividends inside a 401(k), IRA,
+  Roth or HSA are reinvested behind a tax wrapper and never reach a spendable
+  balance. A checkbox includes them as separate accounts.
 - CSV import fallback for anyone who doesn't want to run the worker.
 - Per-account share counts, so a fund split between two institutions is tracked
   properly and syncing one can't wipe the other — see
   [Holdings across several institutions](#holdings-across-several-institutions).
 - Distributions colour-coded by quarter, and a table that folds to three
   columns in portrait so dates and dollar amounts stay side by side.
-- Pull down to refresh, which also checks for a new build — see
-  [Staying up to date](#staying-up-to-date).
 - Staleness warnings that call out a stalled daily build or stale share counts,
   because a broken build renders identically to a healthy one.
 
