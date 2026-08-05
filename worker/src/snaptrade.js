@@ -218,30 +218,46 @@ async function fetchSnaptradeHoldings(env) {
     return { connections: [], holdings: {}, institution: null, accounts: 0, connected: false };
   }
 
-  const groups = new Map();
-  for (const account of accounts) {
+  // Fetched concurrently. One request per account, and a real login can expose
+  // nine or more (401k, IRA, Roth, HSA, cash management, a credit card), which
+  // sequentially took about nine seconds - a long time to hold a button down.
+  const settled = await Promise.all(accounts.map(async (account) => {
     const id = account && (account.id || account.account_id);
-    if (!id) continue;
+    if (!id) return null;
     const name = (account && (account.institution_name || account.brokerage_authorization_name)) || null;
     const auth = account && account.brokerage_authorization;
-    const key = String(
-      (auth && (auth.id || auth)) || name || "snaptrade"
-    );
+    const key = String((auth && (auth.id || auth)) || name || "snaptrade");
 
     let positions = [];
     try {
       positions = await snaptrade(env, "GET", `/accounts/${encodeURIComponent(id)}/positions`, null);
     } catch (err) {
-      // Older deployments and some account types still answer on /holdings.
-      const wrapper = await snaptrade(env, "GET", `/accounts/${encodeURIComponent(id)}/holdings`, null);
-      positions = (wrapper && wrapper.positions) || [];
+      try {
+        // Older deployments and some account types still answer on /holdings.
+        const wrapper = await snaptrade(env, "GET", `/accounts/${encodeURIComponent(id)}/holdings`, null);
+        positions = (wrapper && wrapper.positions) || [];
+      } catch (inner) {
+        // One unreadable account must not fail the whole sync. A credit card or
+        // a plan account that answers neither endpoint would otherwise stop the
+        // brokerage account beside it from reporting at all.
+        return { key, name, positions: [], error: `${name || "An account"}: ${inner.message}` };
+      }
     }
+    return { key, name, positions: Array.isArray(positions) ? positions : [] };
+  }));
 
-    if (!groups.has(key)) groups.set(key, { key, institution: name, holdings: {}, accounts: 0 });
-    const group = groups.get(key);
+  const groups = new Map();
+  const errors = [];
+  for (const entry of settled) {
+    if (!entry) continue;
+    if (entry.error) errors.push(entry.error);
+    if (!groups.has(entry.key)) {
+      groups.set(entry.key, { key: entry.key, institution: entry.name, holdings: {}, accounts: 0 });
+    }
+    const group = groups.get(entry.key);
     group.accounts += 1;
-    if (!group.institution && name) group.institution = name;
-    const partial = aggregatePositions(Array.isArray(positions) ? positions : []);
+    if (!group.institution && entry.name) group.institution = entry.name;
+    const partial = aggregatePositions(entry.positions);
     for (const [sym, qty] of Object.entries(partial)) {
       group.holdings[sym] = (group.holdings[sym] || 0) + qty;
     }
@@ -267,6 +283,7 @@ async function fetchSnaptradeHoldings(env) {
 
   return {
     connections,
+    errors,
     holdings: merged,
     institution,
     accounts: accounts.length,

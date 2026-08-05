@@ -464,6 +464,79 @@ async function main() {
       console.log('         cleanup: ' + await disconnect());
     }
 
+    /* ---------------------------------------------------------------------
+     * SnapTrade, if the worker has credentials for it. Unlike the Plaid
+     * scenarios above there is no sandbox here - this reads whatever is really
+     * linked - so it asserts shape and invariants rather than fixed numbers.
+     * ------------------------------------------------------------------- */
+    const snapConfigured = await evalJs(`(async () => {
+      const r = await fetch(window.DIVTRACKER_CONFIG.WORKER_BASE + '/status', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Sync-Key': ${JSON.stringify(HEADER_KEY())} },
+        body: '{}' });
+      const j = await r.json();
+      return j.snaptradeConfigured === true;
+    })()`);
+
+    if (!snapConfigured) {
+      console.log('snaptrade: not configured on this worker, skipped');
+    } else {
+      console.log('snaptrade, against whatever is really linked:');
+      // Clear BEFORE the load that matters. Clearing after the page has booted
+      // only empties storage: init() has already read it into memory, and the
+      // next commit writes that memory straight back.
+      await evalJs(`
+        localStorage.removeItem('divtracker.accounts.v1');
+        localStorage.removeItem('divtracker.holdingLots.v1');
+        localStorage.removeItem('divtracker.holdings.v1'); 'cleared'`);
+      await rpc(ws, id++, 'Page.navigate', { url: url + '?snap=' + Date.now() });
+      await new Promise((r) => setTimeout(r, 2500));
+
+      const snap = await evalJs(`(async () => {
+        const b = document.getElementById('sync-snaptrade');
+        b.hidden = false;
+        b.click();
+        await new Promise((r) => setTimeout(r, 20000));
+        return JSON.stringify({
+          status: document.getElementById('sync-status').textContent.trim(),
+          accounts: JSON.parse(localStorage.getItem('divtracker.accounts.v1') || '[]'),
+          lots: JSON.parse(localStorage.getItem('divtracker.holdingLots.v1') || '{}'),
+          totals: JSON.parse(localStorage.getItem('divtracker.holdings.v1') || '{}'),
+          rows: document.querySelectorAll('#dist-body tr.dist-row').length,
+        });
+      })()`);
+      const sn = JSON.parse(snap);
+      console.log('         status line: ' + sn.status);
+      console.log('         accounts: ' + sn.accounts.map((a) => a.name + '/' + a.provider).join(', '));
+
+      check('the SnapTrade sync succeeded', /Synced \d+ position/.test(sn.status), sn.status);
+      check('it created an account per institution', sn.accounts.length >= 1,
+        JSON.stringify(sn.accounts));
+      check('every account is pinned to a snaptrade key',
+        sn.accounts.every((a) => /^snaptrade:/.test(a.provider || '')),
+        sn.accounts.map((a) => a.provider).join(', '));
+      check('the account is named after the brokerage, not "N accounts"',
+        sn.accounts.every((a) => !/^\d+ accounts?$/.test(a.name)),
+        sn.accounts.map((a) => a.name).join(', '));
+
+      const symbols = Object.keys(sn.totals);
+      check('it filed at least one tracked symbol', symbols.length > 0, JSON.stringify(sn.totals));
+      check('only tracked symbols were written',
+        symbols.every((s) => ['MSFT', 'FXAIX', 'FSKAX'].includes(s)),
+        'symbols written: ' + symbols.join(', '));
+      // Money-market and cash sweep positions (SPAXX, FCASH, FDRXX) and the
+      // opaque 401(k) plan codes must not be mistaken for holdings.
+      check('cash sweep positions were ignored',
+        !symbols.some((s) => ['SPAXX', 'FCASH', 'FDRXX'].includes(s)),
+        'symbols written: ' + symbols.join(', '));
+
+      const derived = Object.fromEntries(Object.entries(sn.lots).map(
+        ([sym, buckets]) => [sym, Object.values(buckets).reduce((a, b) => a + b, 0)]));
+      check('the per-account lots add up to the totals shown',
+        JSON.stringify(derived) === JSON.stringify(sn.totals),
+        JSON.stringify(derived) + ' vs ' + JSON.stringify(sn.totals));
+      check('the table rendered from the synced shares', sn.rows > 0, String(sn.rows));
+    }
+
     console.log(fails === 0 ? '\nLIVE SYNC VERIFIED' : `\n${fails} CHECK(S) FAILED`);
   } finally {
     if (ws) ws.close();

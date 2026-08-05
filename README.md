@@ -598,6 +598,31 @@ integration". That FAQ entry is written for Commercial keys and appears not to
 apply to Personal ones, but it could not be confirmed from the public docs.
 Link Fidelity through the portal early, before relying on it.
 
+**In practice it works.** A Personal key connects to Fidelity through the
+Fidelity Access OAuth flow and reads every account behind that one login — 401(k),
+deferred comp, traditional IRA, Roth IRA, ESPP, HSA, individual brokerage, cash
+management, even a credit card. All of them share one
+`brokerage_authorization`, so they collapse into a single **Fidelity** account
+here, with the same fund summed across them. That is the right grouping for this
+app: the question it answers is "how much FXAIX is at Fidelity versus U.S. Bank",
+not "which sub-account holds it".
+
+Two things fall out of a real login that a test account never shows:
+
+- **Cash sweep positions are holdings too.** SPAXX, FCASH and FDRXX come back
+  as positions with large unit counts. They are money-market funds, not tracked
+  tickers, so they are filtered out — but only because the filter is a
+  whitelist of configured symbols rather than a blacklist of known cash tickers.
+- **401(k) plan lots have no real ticker.** Fidelity reports commingled pools
+  under opaque codes like `TGK1` or `O7M4`. Nothing can match those to a public
+  symbol, so a 401(k) invested in an S&P 500 pool contributes nothing here even
+  though it economically holds the same thing.
+
+Nine accounts means nine position requests, which took about nine seconds
+sequentially, so they are issued concurrently. One account that answers neither
+`/positions` nor `/holdings` is reported and skipped rather than failing the
+whole sync — a credit card should not stop a brokerage account from reporting.
+
 Requests are signed per
 [SnapTrade's spec](https://docs.snaptrade.com/docs/request-signatures):
 HMAC-SHA256 over canonical JSON (`{content, path, query}`, keys sorted, no
