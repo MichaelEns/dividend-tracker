@@ -201,20 +201,24 @@ async function listAccounts(env) {
 }
 
 /**
- * Reads every connected account, split three ways.
+ * Reads every connected account, split two ways.
  *
- * A brokerage login covers three different kinds of account, and conflating
- * them answers the wrong question:
+ * A brokerage login covers accounts whose dividends behave quite differently,
+ * and conflating them answers the wrong question:
  *
  *   connections - accounts whose dividends can be spent when they land
  *   sheltered   - retirement and health accounts, same shape, reported
  *                 separately so the page can offer them without counting them
- *   cards       - credit cards, which are balances owed rather than holdings
  *
- * Cards cost no extra requests: the balance is already in the /accounts
- * response. Sheltered accounts cost one request each, which is affordable -
- * SnapTrade allows 250 requests a minute (x-ratelimit-limit) and a 20-account
- * login uses about a dozen.
+ * Credit cards and chequing accounts are classified so they can be skipped and
+ * named, but nothing is read from them. Card balances were tried and removed:
+ * SnapTrade covers cards only at the brokerages it supports, which leaves out
+ * Capital One and Apple Card entirely, and a total labelled "across all cards"
+ * that silently omits one is worse than no total at all.
+ *
+ * Sheltered accounts cost one request each, which is affordable - SnapTrade
+ * allows 250 requests a minute (x-ratelimit-limit) and a 20-account login uses
+ * about a dozen.
  *
  * Accounts at the same institution are summed; different institutions are kept
  * apart, because the page files shares per account precisely so that syncing
@@ -224,14 +228,13 @@ async function fetchSnaptradeHoldings(env) {
   const all = await listAccounts(env);
   if (all.length === 0) {
     return {
-      connections: [], sheltered: [], cards: [], skipped: [], errors: [],
+      connections: [], sheltered: [], skipped: [], errors: [],
       holdings: {}, institution: null, accounts: 0, connected: false,
     };
   }
 
   const spendable = [];
   const shelteredAccounts = [];
-  const cards = [];
   const skipped = [];
   for (const account of all) {
     const kind = classifyAccount({
@@ -245,7 +248,6 @@ async function fetchSnaptradeHoldings(env) {
     }
     skipped.push({ name: (account && account.name) || "an account", kind });
     if (kind === "sheltered") shelteredAccounts.push(account);
-    else if (kind === "credit") cards.push(describeCard(account));
   }
 
   const [spendableResult, shelteredResult] = await Promise.all([
@@ -275,36 +277,12 @@ async function fetchSnaptradeHoldings(env) {
   return {
     connections,
     sheltered: shelteredResult.connections,
-    cards,
     errors,
     skipped,
     holdings: merged,
     institution,
     accounts: spendable.length,
     connected: true,
-  };
-}
-
-/**
- * A credit card as a balance rather than a holding.
- *
- * SnapTrade reports what is owed as a NEGATIVE amount, which reads as a credit
- * on screen. `owed` is the positive figure a cardholder would recognise, so a
- * card owing $1,234.56 reports owed: 1234.56. A card genuinely in credit keeps
- * a negative `owed`, which keeps the two cases distinguishable instead of
- * collapsing both to a magnitude.
- */
-function describeCard(account) {
-  const total = account && account.balance && account.balance.total;
-  const amount = total && typeof total.amount === "number" ? total.amount : null;
-  const sync = account && account.sync_status && account.sync_status.holdings;
-  return {
-    key: String((account && (account.id || account.account_id)) || ""),
-    institution: (account && account.institution_name) || null,
-    name: (account && account.name) || "Credit card",
-    owed: amount === null ? null : -amount,
-    currency: (total && total.currency) || "USD",
-    syncedAt: (sync && sync.last_successful_sync) || null,
   };
 }
 
@@ -368,33 +346,6 @@ async function readGroups(env, accounts, suffix) {
   return { connections: [...groups.values()], errors };
 }
 
-/**
- * Order credit cards for display.
- *
- * Cards with something owed come first, alphabetically; cards with nothing
- * owed come after them, also alphabetically. A paid-off card is not
- * interesting until it is used again, but hiding it entirely would make it
- * look disconnected, so it sinks rather than disappears.
- *
- * A card in genuine credit (the issuer owes you) counts as outstanding: it is
- * a non-zero balance and worth seeing.
- */
-function sortCards(cards) {
-  return [...(cards || [])].sort((a, b) => {
-    const aZero = !a.owed;
-    const bZero = !b.owed;
-    if (aZero !== bZero) return aZero ? 1 : -1;
-    return String(a.name || "").localeCompare(String(b.name || ""), undefined,
-      { sensitivity: "base", numeric: true });
-  });
-}
-
-/** Total owed across every card, ignoring any whose balance failed to read. */
-function totalOwed(cards) {
-  return (cards || []).reduce((sum, c) => sum + (typeof c.owed === "number" ? c.owed : 0), 0);
-}
-
-
 export {
   canonicalJson,
   signRequest,
@@ -404,9 +355,6 @@ export {
   extractTicker,
   extractUnits,
   createPortalUrl,
-  describeCard,
-  sortCards,
-  totalOwed,
   listAccounts,
   fetchSnaptradeHoldings,
 };

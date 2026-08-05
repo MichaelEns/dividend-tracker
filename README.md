@@ -702,6 +702,48 @@ HMAC-SHA256 over canonical JSON (`{content, path, query}`, keys sorted, no
 whitespace), base64, in a `Signature` header. `tests/snaptrade.test.mjs`
 verifies this against Node's own HMAC implementation.
 
+### Credit cards: investigated, not built
+
+Researched 2026-08-04 and deliberately dropped. The wanted feature was a live
+total of outstanding charges across every card. It cannot be honest today:
+
+| Issuer | Balance + posted txns | Pending txns |
+| --- | --- | --- |
+| Fidelity, Robinhood, U.S. Bank, Chase, Wells Fargo | SnapTrade (already wired) | no |
+| **Capital One** | Plaid Trial — free, OAuth, self-serve | **no** ([Plaid support](https://support.plaid.com/hc/en-us/articles/25286986638231)) |
+| **First Tech FCU** | Plaid Trial — credential-based | unconfirmed |
+| **Apple Card** | **nothing** | **nothing** |
+
+Three reasons it was dropped rather than half-built:
+
+1. **A partial total is a wrong total.** A figure labelled "across all cards"
+   that silently omits the Apple Card is worse than no figure — it invites a
+   decision based on a number that is quietly too small.
+2. **Apple Card has no path for an individual.** It is absent from Plaid's
+   institution list entirely. Apple's FinanceKit (iOS 17.4+) is the only
+   sanctioned API, and it requires an organisation developer account, a Finance
+   category App Store app and Apple's approval — and it is an *on-device* iOS
+   framework, so a web page or a Worker could not call it even with approval.
+   Manual per-statement CSV export from Wallet is the only individual option.
+   Goldman Sachs still operates the card; the announced move to Chase is not
+   expected to complete until roughly 2028, and nothing has been said about
+   data sharing changing.
+3. **Pending charges — the actual request — are unavailable at Capital One**
+   even via Plaid, which is where the largest balance sits.
+
+SnapTrade *can* read cards at the brokerages it supports, and that code was
+written, verified against five real cards, then removed. For whenever the
+coverage picture changes, the mechanics were:
+
+- Identify with `account_category === "LOC"`.
+- Balance in `account.balance.total`; SnapTrade reports a debt as a **negative**
+  amount, so it needs negating before display.
+- Transactions at `GET /accounts/{id}/activities`. Note `/accounts/{id}/transactions`
+  returns 404 and the top-level `/activities` returns 410 — only the per-account
+  `activities` path works.
+
+See git history around `c36b7b8` for the implementation.
+
 ### Dead ends, so you don't chase them
 
 - **OFX Direct Connect** (`ofx.fidelity.com`) — the classic no-third-party

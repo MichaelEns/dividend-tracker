@@ -19,9 +19,6 @@ import {
   aggregatePositions,
   extractTicker,
   extractUnits,
-  describeCard,
-  sortCards,
-  totalOwed,
 } from '../worker/src/snaptrade.js';
 
 test('canonical JSON sorts keys at every level and strips whitespace', () => {
@@ -169,108 +166,4 @@ test('positions tolerate an empty or missing payload', () => {
   assert.deepStrictEqual(aggregatePositions([]), {});
   assert.deepStrictEqual(aggregatePositions(null), {});
   assert.deepStrictEqual(aggregatePositions(undefined), {});
-});
-
-/* ----------------------------------------------------------- credit cards */
-
-test('what is owed is reported as a positive number', () => {
-  // SnapTrade reports a debt as a negative balance, which reads as a credit on
-  // screen. A cardholder asked what they owe expects a positive figure.
-  const card = describeCard({
-    id: 'abc', institution_name: 'U.S. Bank', name: 'Credit Card - 0001',
-    balance: { total: { amount: -1234.56, currency: 'USD' } },
-    sync_status: { holdings: { last_successful_sync: '2026-08-05T03:00:00Z' } },
-  });
-  assert.strictEqual(card.owed, 1234.56);
-  assert.strictEqual(card.institution, 'U.S. Bank');
-  assert.strictEqual(card.currency, 'USD');
-  assert.strictEqual(card.syncedAt, '2026-08-05T03:00:00Z');
-});
-
-test('a card genuinely in credit stays distinguishable from one that is owed', () => {
-  // Overpaid: the issuer owes the cardholder. Collapsing to a magnitude would
-  // report it as a debt, which is precisely backwards.
-  const card = describeCard({ balance: { total: { amount: 42.5, currency: 'USD' } } });
-  assert.strictEqual(card.owed, -42.5);
-});
-
-test('a card whose balance could not be read reports null, not zero', () => {
-  // Zero means "paid off" and sorts last; null means "unknown" and must not be
-  // silently presented as good news.
-  assert.strictEqual(describeCard({ name: 'X' }).owed, null);
-  assert.strictEqual(describeCard({ balance: {} }).owed, null);
-  assert.strictEqual(describeCard({ balance: { total: { amount: 'oops' } } }).owed, null);
-});
-
-test('cards with a balance sort before cards without, each alphabetically', () => {
-  // The real five, with the names and balances SnapTrade actually returned.
-  const cards = [
-    { name: 'Robinhood Credit Card', owed: 9.99 },
-    { name: 'Fidelity\u00ae Rewards Visa Signature\u00ae Card 0000', owed: 0 },
-    { name: 'State Farm\u00ae Premier Cash Rewards Visa Signature', owed: 77.25 },
-    { name: 'Credit Card - 0002', owed: 22.50 },
-    { name: 'Credit Card - 0001', owed: 1234.56 },
-  ];
-  assert.deepStrictEqual(sortCards(cards).map((c) => c.name), [
-    'Credit Card - 0001',
-    'Credit Card - 0002',
-    'Robinhood Credit Card',
-    'State Farm\u00ae Premier Cash Rewards Visa Signature',
-    'Fidelity\u00ae Rewards Visa Signature\u00ae Card 0000',
-  ]);
-});
-
-test('a paid-off card sinks rather than disappearing', () => {
-  const sorted = sortCards([
-    { name: 'AAA Paid Off', owed: 0 },
-    { name: 'ZZZ Owing', owed: 5 },
-  ]);
-  assert.deepStrictEqual(sorted.map((c) => c.name), ['ZZZ Owing', 'AAA Paid Off'],
-    'an alphabetically-first paid card must still sort after an owing one');
-  assert.strictEqual(sorted.length, 2, 'a paid card must not be hidden entirely');
-});
-
-test('a card in credit counts as outstanding, not as paid off', () => {
-  const sorted = sortCards([
-    { name: 'Paid', owed: 0 },
-    { name: 'Overpaid', owed: -20 },
-  ]);
-  assert.strictEqual(sorted[0].name, 'Overpaid',
-    'a non-zero balance is worth seeing whichever way it points');
-});
-
-test('a card with an unreadable balance is not treated as paid off', () => {
-  const sorted = sortCards([{ name: 'Paid', owed: 0 }, { name: 'Unknown', owed: null }]);
-  assert.strictEqual(sorted[0].name, 'Paid',
-    'null is falsy, so an unknown balance sorts with the paid cards');
-});
-
-test('numbers inside names sort naturally, not lexically', () => {
-  const sorted = sortCards([
-    { name: 'Credit Card - 10', owed: 1 },
-    { name: 'Credit Card - 9', owed: 1 },
-  ]);
-  assert.deepStrictEqual(sorted.map((c) => c.name), ['Credit Card - 9', 'Credit Card - 10']);
-});
-
-test('sorting does not mutate the caller\u2019s array', () => {
-  const cards = [{ name: 'B', owed: 0 }, { name: 'A', owed: 5 }];
-  sortCards(cards);
-  assert.strictEqual(cards[0].name, 'B', 'the input array was reordered in place');
-});
-
-test('the total owed is the sum across every card', () => {
-  assert.strictEqual(totalOwed([
-    { owed: 9.99 }, { owed: 1234.56 }, { owed: 22.50 }, { owed: 77.25 }, { owed: 0 },
-  ]).toFixed(2), '1344.30');
-});
-
-test('an unreadable balance does not poison the total', () => {
-  assert.strictEqual(totalOwed([{ owed: 100 }, { owed: null }, { owed: 50 }]), 150);
-  assert.strictEqual(totalOwed([]), 0);
-  assert.strictEqual(totalOwed(null), 0);
-});
-
-test('a card in credit reduces the total', () => {
-  assert.strictEqual(totalOwed([{ owed: 100 }, { owed: -30 }]), 70);
 });
