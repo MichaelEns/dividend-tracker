@@ -150,6 +150,10 @@ export default {
         const body = await safeJson(request);
         return json(await createLinkToken(env, linkScope(body && body.scope)), 200, cors);
       }
+      if (url.pathname === "/link/token/update" && request.method === "POST") {
+        const body = await safeJson(request);
+        return json(await createUpdateToken(env, body && body.key), 200, cors);
+      }
       if (url.pathname === "/link/token/exchange" && request.method === "POST") {
         const body = await safeJson(request);
         const publicToken = body && body.public_token;
@@ -409,6 +413,54 @@ async function createLinkToken(env, scope) {
   return { link_token: payload.link_token };
 }
 
+/**
+ * A link token that reopens an EXISTING connection to change which accounts it
+ * shares.
+ *
+ * Plaid asks which accounts to share during sign-in, and a bank that offered
+ * only a credit card leaves the rest invisible with no way back - short of
+ * re-linking, which permanently consumes another of the ten Trial slots.
+ *
+ * Update mode reuses the Item, so it costs nothing. `products` must be omitted
+ * entirely: Plaid rejects a token that specifies both an access_token and
+ * products.
+ */
+async function createUpdateToken(env, key) {
+  const items = await readItems(env);
+  const item = key
+    ? items.find((it) => (it.key || connectionKey(it)) === key)
+    : items[0];
+  if (!item) {
+    throw new Error(
+      key ? `No connection is stored for ${key}.` : "No connection is stored yet."
+    );
+  }
+  const scope = (item.scope === SCOPE_BALANCES) ? SCOPE_BALANCES : SCOPE_HOLDINGS;
+  const balances = scope === SCOPE_BALANCES;
+
+  const payload = await plaid(env, "/link/token/create", {
+    user: { client_user_id: "divtracker-owner" },
+    client_name: (balances && env.PLAID_BALANCE_CLIENT_NAME)
+      || (balances ? "Bank Balances" : null)
+      || env.PLAID_CLIENT_NAME
+      || "Dividend Tracker",
+    country_codes: (
+      balances
+        ? (env.PLAID_BALANCE_COUNTRY_CODES || "CA")
+        : (env.PLAID_COUNTRY_CODES || "US")
+    ).split(",").map((s) => s.trim()).filter(Boolean),
+    language: "en",
+    access_token: item.access_token,
+    update: { account_selection_enabled: true },
+  }, plaidCredsFor(env, item));
+
+  return {
+    link_token: payload.link_token,
+    institution: item.institution || null,
+    key: item.key || connectionKey(item),
+  };
+}
+
 async function exchangeAndFetch(env, publicToken, scope) {
   const exchange = await plaid(env, "/item/public_token/exchange", {
     public_token: publicToken,
@@ -428,13 +480,26 @@ async function exchangeAndFetch(env, publicToken, scope) {
       ? await fetchAccountSummary(env, accessToken, scope)
       : await fetchHoldings(env, accessToken, scope);
   } catch (err) {
-    // Never keep a token we could not actually use.
     if (!canPersist) {
+      // Nowhere to keep the token, so it could never be used again. Releasing
+      // the Item is the only way not to leave a live connection behind.
       try {
         await plaid(env, "/item/remove", { access_token: accessToken }, scope);
       } catch { /* ignore */ }
+      throw err;
     }
-    throw err;
+
+    // We CAN persist, so keep it. The exchange already succeeded, which means
+    // a Trial Item is already spent and /item/remove does NOT refund it.
+    // Discarding the token here would leave a live Item that nothing can ever
+    // read, refresh or disconnect - a slot gone with nothing to show for it.
+    // Storing it means the read can simply be retried.
+    await rememberPartialLink(env, exchange, accessToken, scope);
+    throw new Error(
+      `${(err && err.message) || "The first read failed"}. The bank is linked and ` +
+      "has been saved, so press Refresh to try reading it again - re-linking would " +
+      "consume another connection for nothing."
+    );
   }
 
   // Computed before the persistence branch because the browser needs it either
@@ -693,6 +758,40 @@ function describeAccount(account) {
     limit: typeof b.limit === "number" ? b.limit : null,
     currency: b.iso_currency_code || b.unofficial_currency_code || null,
   };
+}
+
+/**
+ * Store a connection whose first read failed.
+ *
+ * The Item exists and its Trial slot is already spent either way, so the only
+ * question is whether anything can ever reach it again. Looks the institution
+ * up separately because the call that would have reported it is the one that
+ * just failed; an unnamed connection is still far better than a lost one.
+ */
+async function rememberPartialLink(env, exchange, accessToken, scope) {
+  let institutionId = null;
+  let institution = null;
+  try {
+    const item = await plaid(env, "/item/get", { access_token: accessToken }, scope);
+    institutionId = (item && item.item && item.item.institution_id) || null;
+    institution = await lookupInstitutionName(env, institutionId, scope);
+  } catch { /* the point is to keep the token, not to label it */ }
+
+  const record = {
+    key: connectionKey({ institutionId, item_id: exchange.item_id }),
+    item_id: exchange.item_id || null,
+    institutionId,
+    access_token: accessToken,
+    institution,
+    scope: scope === SCOPE_BALANCES ? SCOPE_BALANCES : SCOPE_HOLDINGS,
+    connectedAt: new Date().toISOString(),
+  };
+
+  const items = await readItems(env);
+  const existing = items.findIndex((it) => (it.key || connectionKey(it)) === record.key);
+  if (existing >= 0) items[existing] = record;
+  else items.push(record);
+  await writeItems(env, items);
 }
 
 async function fetchHoldings(env, accessToken, scope) {

@@ -449,6 +449,67 @@ async function linkBank() {
   }
 }
 
+/**
+ * Reopen a bank you already linked, to change which accounts it shares.
+ *
+ * Plaid asks which accounts to share during sign-in, and a bank that offered
+ * only a credit card leaves the rest invisible. This is Link's update mode: it
+ * reuses the existing connection, so unlike linking again it does not consume
+ * one of the ten Trial connections.
+ */
+async function editAccounts() {
+  if (!WORKER_BASE) return;
+  const key = getSyncKey(true);
+  if (!key) {
+    setStatus('A sync passphrase is required.', 'error');
+    return;
+  }
+  const button = document.getElementById('edit-accounts-balances');
+  const original = button ? button.textContent : '';
+  try {
+    if (button) { button.disabled = true; button.textContent = 'Preparing…'; }
+    const target = state.connections && state.connections.length === 1
+      ? state.connections[0].key
+      : (state.connections || []).map((c) => c.key)[0];
+    const { link_token: linkToken, institution } = await workerPost(
+      '/link/token/update', { key: target }, key,
+    );
+    if (!linkToken) throw new Error('The worker did not return a link_token.');
+    await loadPlaidSdk();
+    setStatus(
+      `Sign in to ${institution || 'your bank'} and tick the accounts you want. `
+      + 'This reuses the existing connection, so it costs nothing.', 'ok',
+    );
+
+    const handler = window.Plaid.create({
+      token: linkToken,
+      // Update mode reuses the Item, so there is no public token to exchange
+      // and nothing new to store - only the account list has changed.
+      onSuccess: async () => {
+        try {
+          setStatus('Accounts updated. Reading balances…', 'ok');
+          await refreshBalances();
+          await refreshConnections(key);
+        } catch (err) {
+          setStatus('Accounts updated, but reading balances failed: ' + err.message, 'error');
+        } finally {
+          if (button) { button.disabled = false; button.textContent = original; }
+        }
+      },
+      onExit: (err) => {
+        if (button) { button.disabled = false; button.textContent = original; }
+        if (err) setStatus('Cancelled or errored: ' + (err.error_message || err.error_code || 'exited'), 'error');
+        else setStatus('No changes made.', 'ok');
+      },
+      onEvent: () => {},
+    });
+    handler.open();
+  } catch (err) {
+    setStatus('Could not reopen the bank: ' + err.message, 'error');
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+
 async function refreshConnections(key) {
   if (!WORKER_BASE) return;
   try {
@@ -456,8 +517,11 @@ async function refreshConnections(key) {
     state.connections = status.connections || [];
     const add = document.getElementById('add-bank-balances');
     const sync = document.getElementById('sync-balances');
+    const edit = document.getElementById('edit-accounts-balances');
     if (add) add.hidden = false;
     if (sync) sync.hidden = !status.connected;
+    // Only offered once something is linked: it reopens an existing connection.
+    if (edit) edit.hidden = !status.connected;
     renderConnections();
   } catch { /* a status check must never break the page */ }
 }
@@ -540,7 +604,8 @@ async function init() {
   if (sync) sync.addEventListener('click', () => refreshBalances());
   const add = document.getElementById('add-bank-balances');
   if (add) add.addEventListener('click', () => linkBank());
-
+  const edit = document.getElementById('edit-accounts-balances');
+  if (edit) edit.addEventListener('click', () => editAccounts());
   setupPullToRefresh();
 
   // A balance is worth re-reading on every open and every resume - unlike a

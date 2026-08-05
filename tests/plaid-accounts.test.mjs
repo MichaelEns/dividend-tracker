@@ -154,6 +154,155 @@ test('the bank consent screen names the app doing the asking', async () => {
   assert.ok(names[1] && names[1].length > 0);
 });
 
+/* ------------------------------------------------------ protecting slots */
+
+test('a link whose first read fails is kept, not thrown away', async () => {
+  // The exchange already succeeded, so a Trial slot is spent and /item/remove
+  // does not refund it. Discarding the token would leave a live Item nothing
+  // can ever read, refresh or disconnect: the slot gone for nothing.
+  const env = makeEnv();
+  const stub = stubPlaid({
+    '/item/public_token/exchange': { access_token: 'tok-x', item_id: 'item-x' },
+    '/item/get': { item: { institution_id: 'ins_42' } },
+    '/institutions/get_by_id': { institution: { name: 'TD Canada Trust' } },
+  });
+  // The first read is the one that fails.
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (new URL(url).pathname === '/accounts/get') {
+      return { ok: false, status: 400, async text() {
+        return JSON.stringify({ error_code: 'PRODUCT_NOT_READY', error_message: 'not ready' });
+      } };
+    }
+    return inner(url, opts);
+  };
+
+  let res;
+  try {
+    res = await post('/link/token/exchange', { public_token: 'pub', scope: 'balances' }, env);
+  } finally { globalThis.fetch = inner; stub.restore(); }
+
+  assert.strictEqual(res.status, 500, 'the failure should still be reported');
+  const stored = JSON.parse(env.TOKENS.store.get('plaid:items') || '[]');
+  assert.strictEqual(stored.length, 1, 'the connection was discarded and its slot lost');
+  assert.strictEqual(stored[0].access_token, 'tok-x');
+  assert.strictEqual(stored[0].scope, 'balances');
+
+  const removes = forPath(stub.calls, '/item/remove');
+  assert.strictEqual(removes.length, 0,
+    'the Item was removed, which does not refund the slot and only loses access');
+});
+
+test('the error explains that re-linking would waste a connection', async () => {
+  const env = makeEnv();
+  const stub = stubPlaid({
+    '/item/public_token/exchange': { access_token: 'tok-x', item_id: 'item-x' },
+    '/item/get': { item: { institution_id: 'ins_42' } },
+  });
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (new URL(url).pathname === '/accounts/get') {
+      return { ok: false, status: 400, async text() {
+        return JSON.stringify({ error_code: 'X', error_message: 'boom' });
+      } };
+    }
+    return inner(url, opts);
+  };
+  let res;
+  try {
+    res = await post('/link/token/exchange', { public_token: 'pub', scope: 'balances' }, env);
+  } finally { globalThis.fetch = inner; stub.restore(); }
+
+  const body = await res.json();
+  assert.match(body.error, /Refresh/i, `should point at Refresh, got: ${body.error}`);
+  assert.match(body.error, /consume another|re-link/i);
+});
+
+test('with no storage a failed read does release the Item', async () => {
+  // The opposite case: nothing can persist the token, so the Item would be
+  // unreachable forever. Releasing it is then the only responsible thing.
+  const env = makeEnv({ TOKENS: undefined });
+  const stub = stubPlaid({
+    '/item/public_token/exchange': { access_token: 'tok-y', item_id: 'item-y' },
+  });
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (new URL(url).pathname === '/accounts/get') {
+      return { ok: false, status: 400, async text() {
+        return JSON.stringify({ error_code: 'X', error_message: 'boom' });
+      } };
+    }
+    return inner(url, opts);
+  };
+  try {
+    await post('/link/token/exchange', { public_token: 'pub', scope: 'balances' }, env);
+  } finally { globalThis.fetch = inner; stub.restore(); }
+
+  const removes = forPath(stub.calls, '/item/remove');
+  assert.strictEqual(removes.length, 1, 'an unreachable Item should have been released');
+  assert.strictEqual(removes[0].accessToken, 'tok-y');
+});
+
+/* ----------------------------------------------------------- update mode */
+
+test('adding accounts reuses the connection instead of spending a slot', async () => {
+  const env = seededEnv();
+  const stub = stubPlaid({ '/link/token/create': { link_token: 'lt-update' } });
+  try {
+    await post('/link/token/update', { key: 'ins_42' }, env);
+  } finally { stub.restore(); }
+
+  const call = stub.calls.find((c) => c.path === '/link/token/create');
+  assert.ok(call, 'no link token was created');
+  assert.strictEqual(call.accessToken, 'tok-balances',
+    'update mode must pass the existing access token, or it creates a new Item');
+});
+
+test('an update token omits products, which Plaid rejects alongside a token', async () => {
+  const env = seededEnv();
+  const bodies = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return { ok: true, status: 200, async text() { return '{"link_token":"lt"}'; } };
+  };
+  try {
+    await post('/link/token/update', { key: 'ins_42' }, env);
+  } finally { globalThis.fetch = original; }
+
+  const body = bodies[0];
+  assert.ok(!('products' in body),
+    'products alongside access_token is rejected by Plaid outright');
+  assert.deepStrictEqual(body.update, { account_selection_enabled: true },
+    'without account_selection_enabled the user cannot change which accounts are shared');
+});
+
+test('an update reopens the right connection with its own credentials', async () => {
+  const env = seededEnv();
+  const stub = stubPlaid({ '/link/token/create': { link_token: 'lt' } });
+  try {
+    await post('/link/token/update', { key: 'ins_1' }, env);
+  } finally { stub.restore(); }
+
+  const call = stub.calls.find((c) => c.path === '/link/token/create');
+  assert.strictEqual(call.accessToken, 'tok-holdings');
+  assert.strictEqual(call.clientId, HOLDINGS.id,
+    'a token can only be updated by the account that created it');
+});
+
+test('asking to update a connection that does not exist says so', async () => {
+  const env = seededEnv();
+  const stub = stubPlaid({});
+  let res;
+  try {
+    res = await post('/link/token/update', { key: 'ins_nope' }, env);
+  } finally { stub.restore(); }
+  assert.strictEqual(res.status, 500);
+  const body = await res.json();
+  assert.match(body.error, /No connection is stored/);
+  assert.strictEqual(stub.calls.length, 0, 'nothing should have been sent to Plaid');
+});
+
 /* ------------------------------------------------- reading stored tokens */
 /** Two stored connections, one from each account. */
 function seededEnv() {
