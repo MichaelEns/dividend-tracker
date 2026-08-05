@@ -70,6 +70,9 @@ jobs:
       - name: Run pay date tests
         run: node --test tests/paydates.test.cjs
 
+      - name: Run bank balance tests
+        run: node --test tests/balances.test.mjs
+
       - name: Refresh data.json
         run: python build.py --verbose
 

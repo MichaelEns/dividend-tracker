@@ -145,6 +145,9 @@ export default {
       if (url.pathname === "/holdings/refresh" && request.method === "POST") {
         return json(await refreshHoldings(env), 200, cors);
       }
+      if (url.pathname === "/balances" && request.method === "POST") {
+        return json(await readBalances(env), 200, cors);
+      }
       if (url.pathname === "/item/disconnect" && request.method === "POST") {
         const body = await safeJson(request);
         return json(await disconnectItem(env, body && body.key), 200, cors);
@@ -482,6 +485,97 @@ async function disconnectItem(env, key) {
   };
 }
 
+/**
+ * Cash balances across every linked institution.
+ *
+ * Separate from /holdings/refresh because it answers a different question and
+ * reads a different endpoint. Holdings are share counts feeding a dividend
+ * projection; this is "what is in my accounts right now", which for a chequing
+ * account is the only thing there is to read.
+ *
+ * Uses the same stored Items - one link per institution serves both. A bank
+ * with no investment accounts simply reports no holdings, and a brokerage with
+ * no cash reports no balances; neither is an error.
+ *
+ * Reads /accounts/balance/get rather than /accounts/get. The latter returns a
+ * balance cached at the last update, which for a page whose entire purpose is
+ * showing current balances would be quietly wrong. On a Trial plan both are
+ * free, so there is nothing to trade off.
+ *
+ * One institution failing does not fail the request: a stale login at one bank
+ * must not blank the other three.
+ */
+async function readBalances(env) {
+  if (!tokenStore(env)) {
+    throw new Error(
+      "No TOKENS KV namespace is bound, so no connection was stored. " +
+        "Bind one in wrangler.toml first."
+    );
+  }
+  const items = await readItems(env);
+  if (items.length === 0) {
+    return { institutions: [], errors: [], connected: false };
+  }
+
+  const settled = await Promise.all(items.map(async (item) => {
+    const key = item.key || connectionKey(item);
+    try {
+      const payload = await plaid(env, "/accounts/balance/get", {
+        access_token: item.access_token,
+      });
+      return {
+        key,
+        institution: item.institution || null,
+        accounts: (payload.accounts || []).map(describeAccount),
+        readAt: new Date().toISOString(),
+      };
+    } catch (err) {
+      return { key, institution: item.institution || null, accounts: [], readAt: null,
+        error: `${item.institution || "A connection"}: ${(err && err.message) || "failed"}` };
+    }
+  }));
+
+  const errors = settled.filter((s) => s.error).map((s) => s.error);
+  return {
+    institutions: settled.map(({ error, ...rest }) => rest),
+    errors,
+    connected: true,
+  };
+}
+
+/**
+ * One account, reduced to what a balances page shows.
+ *
+ * `current` and `available` differ and both matter: a chequing account's
+ * available balance excludes holds, so it is what you can actually spend, while
+ * current includes them. Passing both through lets the page show the honest one
+ * and explain the gap rather than silently picking.
+ *
+ * A credit card reports what is owed as a positive `current`, which is the
+ * opposite sign convention to SnapTrade. Normalised here rather than on the
+ * page, so the page never has to know which provider a number came from.
+ */
+function describeAccount(account) {
+  const b = (account && account.balances) || {};
+  const isCredit = account && (account.type === "credit" || account.type === "loan");
+  const current = typeof b.current === "number" ? b.current : null;
+  return {
+    id: account.account_id,
+    name: account.official_name || account.name || "Account",
+    shortName: account.name || null,
+    mask: account.mask || null,
+    type: account.type || null,
+    subtype: account.subtype || null,
+    // Positive means "money you have"; negative means "money you owe", so a
+    // total across mixed account types is meaningful rather than nonsense.
+    current: current === null ? null : (isCredit ? -current : current),
+    available: typeof b.available === "number"
+      ? (isCredit ? -b.available : b.available) : null,
+    limit: typeof b.limit === "number" ? b.limit : null,
+    currency: b.iso_currency_code || b.unofficial_currency_code || null,
+  };
+}
+
 async function fetchHoldings(env, accessToken) {
   const investments = await plaid(env, "/investments/holdings/get", {
     access_token: accessToken,
@@ -552,4 +646,4 @@ function aggregateHoldings(investments) {
 // Only functions may be exported from a Worker entry module - the runtime
 // treats named exports as entrypoints. Passphrase and origin helpers live in
 // auth.js, which tests import directly.
-export { aggregateHoldings, connectionKey, mergeHoldings };
+export { aggregateHoldings, connectionKey, mergeHoldings, describeAccount };

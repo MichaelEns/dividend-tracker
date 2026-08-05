@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Balances</title>
+  <meta name="theme-color" content="#0b57d0" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="config.js"></script>
+</head>
+<body>
+  <div id="pull-indicator" class="pull-indicator" aria-hidden="true">
+    <span class="pull-text">Pull to refresh</span>
+  </div>
+
+  <header class="topbar">
+    <h1>Balances</h1>
+    <p class="meta" id="meta">Loading…</p>
+    <nav class="page-nav">
+      <a href="index.html">Dividends &amp; distributions →</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div id="summary-cards" class="cards"></div>
+    </section>
+
+    <section class="panel">
+      <div class="holdings-actions">
+        <button type="button" class="primary" id="sync-balances" hidden>
+          Refresh balances
+        </button>
+        <button type="button" class="primary" id="add-bank-balances" hidden>
+          Link a bank <span class="hint-inline">(TD, Scotiabank, RBC, Meridian…)</span>
+        </button>
+      </div>
+      <div id="connection-list" class="connections" hidden></div>
+      <p class="hint" id="sync-status" hidden></p>
+      <p class="hint" id="setup-hint" hidden>
+        No sync worker is configured, so there is nothing to show. See the README
+        section “Optional: federated sync” to deploy one.
+      </p>
+    </section>
+
+    <section class="panel" id="balances-panel" hidden>
+      <div id="balances-body"></div>
+    </section>
+
+    <section class="panel" id="empty-state" hidden>
+      <p class="hint">
+        No bank is linked yet. Press <strong>Link a bank</strong> above and sign in
+        to TD, Scotiabank, RBC or Meridian. Balances are read on request and are
+        never published — they live only in this browser.
+      </p>
+    </section>
+
+    <p class="privacy">
+      <strong>Private to this device.</strong> Balances are fetched from your own
+      worker and cached only in this browser's local storage. Nothing is uploaded
+      and nothing is part of the published page.
+    </p>
+  </main>
+
+  <script src="balances.js"></script>
+</body>
+</html>

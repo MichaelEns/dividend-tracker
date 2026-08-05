@@ -100,6 +100,10 @@ body {
   transition: height .2s ease;
 }
 
+/* The indicator is only a few pixels tall mid-drag, so its label must never
+ * wrap: a second line would be pushed straight out of the visible strip. */
+.pull-text { white-space: nowrap; }
+
 .topbar {
   position: sticky;
   top: 0;
@@ -565,3 +569,54 @@ tfoot td { font-weight: 650; border-top: 2px solid var(--border); }
   color: var(--muted);
 }
 .connection .link-btn:hover { color: var(--bad); }
+
+/* ------------------------------------------------------------ balances page */
+
+.page-nav { margin-top: 6px; font-size: .85rem; }
+.page-nav a { color: var(--accent); text-decoration: none; }
+.page-nav a:hover { text-decoration: underline; }
+
+.meta.stale { color: var(--warn); }
+.meta.ancient { color: var(--bad); }
+
+.bal-institution { margin-bottom: 22px; }
+.bal-institution:last-child { margin-bottom: 0; }
+.bal-inst-name {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  margin: 0 0 8px; padding-bottom: 6px; font-size: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.bal-inst-total { font-variant-numeric: tabular-nums; font-weight: 650; }
+
+.bal-group {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  margin: 14px 0 4px; font-size: .78rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+}
+.bal-group-total { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+.bal-list { list-style: none; margin: 0; padding: 0; }
+.bal-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+}
+.bal-row:last-child { border-bottom: 0; }
+.bal-name { min-width: 0; }
+.bal-mask { margin-left: 6px; font-size: .8em; color: var(--muted); }
+.bal-amount {
+  text-align: right; white-space: nowrap;
+  font-variant-numeric: tabular-nums; font-weight: 650;
+}
+.bal-row.owed .bal-amount { color: var(--bad); }
+.bal-owed {
+  display: block; font-size: .7rem; font-weight: 400;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+}
+.bal-extra {
+  display: block; font-size: .74rem; font-weight: 400; color: var(--muted);
+}
+
+@media (max-width: 560px) {
+  .bal-inst-name { font-size: .95rem; }
+  .bal-row { padding: 8px 0; }
+}

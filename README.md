@@ -40,6 +40,9 @@ browser's localStorage.
   columns in portrait so dates and dollar amounts stay side by side.
 - Staleness warnings that call out a stalled daily build or stale share counts,
   because a broken build renders identically to a healthy one.
+- **A separate bank balances page** for Canadian chequing, savings and card
+  balances (TD, Scotiabank, RBC, Meridian) — see
+  [Bank balances](#bank-balances-a-separate-page).
 
 ## Repo layout
 
@@ -820,6 +823,78 @@ See git history around `c36b7b8` for the implementation.
 - **Akoya** — the most direct rail, and ironically spun out of Fidelity's own
   parent. B2B only: requires a company and signed data-access agreements.
 
+## Bank balances: a separate page
+
+`docs/balances.html` is a second page, linked from the top of the main one. It
+answers a different question — *how much money is actually in my accounts right
+now* — so it deliberately shares nothing with the dividend table but the sync
+worker, the passphrase and the stylesheet.
+
+It is built around Canadian banks, which SnapTrade does not reach: SnapTrade
+covers TD **Direct Investing** (the brokerage) but not TD Canada Trust, and
+none of Scotiabank, RBC or Meridian at all. So this page is Plaid-only.
+
+### What it shows
+
+Accounts are grouped into **Cash** (chequing, savings), **Owed** (cards and
+loans), **Investments** and **Other**, per institution, with a summary strip
+across the top and a **Net** figure with everything owed subtracted.
+
+Two conventions are worth stating because they are easy to get backwards:
+
+- **Money owed is stored negative.** Plaid reports a card balance as a positive
+  number, which would make a $5,000 card debt read as $5,000 of assets in any
+  total. `describeAccount` negates `credit` and `loan` balances so that a sum
+  across mixed account types means something.
+- **Under a heading that already says "Owed", the minus sign is dropped.**
+  "Owed −$253,988.12" reads as though the bank owes *you*. Rows, group headings
+  and the summary card all show the magnitude; only **Net** keeps the sign,
+  because there the sign is the entire point.
+
+Totals are kept **per currency** and never added together. A page that mixed a
+CAD chequing account into a USD one would produce a confident, wrong number.
+
+### The four banks
+
+All four were confirmed against the live Plaid institutions API:
+
+| Institution | Plaid id | `balance` | Sign-in |
+| --- | --- | --- | --- |
+| TD Canada Trust | `ins_42` | yes | credentials |
+| Scotiabank | `ins_38` | yes | credentials |
+| RBC Royal Bank | `ins_39` | yes | credentials |
+| Meridian Credit Union | `ins_118297` | yes | credentials |
+
+None of them use OAuth, so Plaid takes the banking username and password rather
+than handing off to the bank's own sign-in page. TD and RBC have direct API
+agreements with Plaid; **Scotiabank and Meridian are more likely screen-scraped
+and correspondingly more fragile** — expect those two to need re-linking.
+
+`balance` cannot be an `initial_products` value. Initialise the Item with
+`auth` or `transactions`, then call `/accounts/balance/get`.
+
+### Getting a real (free) Plaid account
+
+The sandbox will not touch a real bank. The **Trial plan** will, and it is free:
+
+> Trial plan is available to developers who are located in the United States or
+> Canada […] US and Canadian institutions are available on Trial plans.
+
+No company, no security questionnaire, no contract.
+
+1. Sign up at <https://dashboard.plaid.com/signup>, verify the email.
+2. Go to <https://dashboard.plaid.com/trial-plan> and request the Trial plan.
+3. Complete identity verification. Usually automatic; 2–3 business days if
+   flagged for review.
+4. Copy the **production** `client_id` and secret into the Worker
+   (`wrangler secret put PLAID_SECRET`) and set `PLAID_ENV=production`,
+   `PLAID_COUNTRY_CODES=CA`.
+
+**The real ceiling is 10 Production Items for the lifetime of the account, and
+they are not refundable.** Four banks is four slots; the other six are your
+entire budget for re-links after a connection breaks. That is the reason to be
+wary of the two fragile institutions above, not the plan's price.
+
 ## Adding more tickers
 
 Edit `config/symbols.json`:
@@ -847,6 +922,7 @@ node --test tests/quarters.test.cjs        # quarter bucketing for the colour ba
 node --test tests/sw.test.cjs              # service worker fetch strategy + cache lifecycle
 node --test tests/accounts.test.cjs        # per-account share counts + migration
 node --test tests/paydates.test.cjs        # the folded portrait date column
+node --test tests/balances.test.mjs       # bank balances: grouping, currency, credit signs
 ```
 
 There is also an end-to-end smoke test that loads the real page in headless Edge
@@ -910,6 +986,29 @@ published with, and that origin must be in the worker's `ALLOWED_ORIGINS`:
 ```powershell
 node tests\live-sync.cjs "<edge path>" <passphrase> https://michaelens.github.io/dividend-tracker/index.html
 ```
+
+### Bank balances verification
+
+`tests/balances.cjs` does the same for the balances page: it links two real
+Sandbox institutions through the real worker, loads the real page, and asserts
+on what actually rendered. It exists because the interesting failures on that
+page are all in the wiring rather than in any single function — a credit
+balance shown as an asset, a heading contradicting the rows beneath it, or a
+blank page on a cold open because nothing was cached.
+
+```powershell
+cd worker; npx wrangler dev --port 8787 --local
+# then, in another shell:
+$env:PLAID_CLIENT_ID="..."; $env:PLAID_SECRET="..."
+node tests\balances.cjs "<edge path>" <passphrase>
+```
+
+The unit tests alongside it include one that is worth calling out: it asserts
+that **every class name used by `balances.html` and `balances.js` is actually
+styled in `styles.css`**. Inventing a class name fails silently — the markup
+renders, just unstyled, and it looks plausible enough in a screenshot to miss.
+That test caught this page shipping `card-label` when the stylesheet had always
+called it `label`.
 
 ## Privacy
 
