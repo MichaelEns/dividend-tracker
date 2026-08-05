@@ -36,7 +36,13 @@ const state = {
   // what other accounts already hold, i.e. when the total may have doubled.
   syncNote: '',
   connections: [],
-  prefs: { range: 'upcoming', hideProjected: false, symbols: [], drip: false },
+  prefs: {
+    range: 'upcoming', hideProjected: false, symbols: [], drip: false,
+    // Off by default: dividends inside a 401(k), IRA, Roth or HSA are
+    // reinvested behind a tax wrapper and never reach a spendable balance, so
+    // counting them overstates "when does money hit my account".
+    includeSheltered: false,
+  },
   today: new Date(),
   // Test-only clock injection. Production reads the real clock per render, so
   // a tab left open overnight still crosses a staleness threshold.
@@ -1447,6 +1453,27 @@ function bindEvents() {
     render();
   });
 
+  const shelteredToggle = document.getElementById('include-sheltered');
+  if (shelteredToggle) {
+    shelteredToggle.addEventListener('change', (event) => {
+      state.prefs.includeSheltered = event.target.checked;
+      save(PREFS_KEY, state.prefs);
+      // Applying the change needs the retirement holdings, which only a sync
+      // fetches. Rather than pretend, drop the buckets when switching off -
+      // that much can be done locally and immediately - and say what turning
+      // it on requires.
+      if (!event.target.checked) {
+        const removed = dropShelteredAccounts();
+        setStatus(removed
+          ? `Retirement accounts removed. Totals now count only what you can spend.`
+          : 'Retirement accounts will stay out of the totals.', 'ok');
+      } else {
+        setStatus('Sync again to pull in your retirement accounts. They will appear as '
+          + 'separate accounts so you can still see the spendable total on its own.', 'ok');
+      }
+    });
+  }
+
   document.getElementById('hide-projected').addEventListener('change', (event) => {
     state.prefs.hideProjected = event.target.checked;
     save(PREFS_KEY, state.prefs);
@@ -1758,15 +1785,21 @@ function describeSync(summary, tracked, verb, skipped) {
  * Say which accounts were left out, and why.
  *
  * The worker counts only accounts whose dividends could be spent on arrival,
- * so a Roth IRA and an HSA are excluded. That is the right default, but it
- * silently changes the numbers - a Fidelity login covering nine accounts would
- * report shares from three of them with nothing to say so. An unexplained
- * shortfall reads as a bug; a named one reads as a decision.
+ * so a Roth IRA and an HSA are excluded by default. That is the right default,
+ * but it silently changes the numbers - a Fidelity login covering nine accounts
+ * would report shares from three of them with nothing to say so. An
+ * unexplained shortfall reads as a bug; a named one reads as a decision.
  *
- * Credit cards and chequing accounts are not mentioned: they hold no positions
- * to begin with, so listing them would be noise rather than information.
+ * Says nothing when the user has asked for retirement accounts, because then
+ * they were not left out at all and claiming otherwise would be a lie about
+ * the very number on screen.
+ *
+ * Credit cards and chequing accounts are never mentioned: they hold no
+ * positions to begin with, so listing them would be noise rather than
+ * information.
  */
-function describeSkipped(skipped) {
+function describeSkipped(skipped, included) {
+  if (included) return '';
   const sheltered = (skipped || []).filter((s) => s && s.kind === 'sheltered');
   if (sheltered.length === 0) return '';
   const names = sheltered.map((s) => s.name).filter(Boolean);
@@ -1806,6 +1839,42 @@ function connectionsFrom(payload, fallbackLabel) {
     return [{ institution: payload.institution || fallbackLabel, holdings: payload.holdings }];
   }
   return [];
+}
+
+/**
+ * An account holding retirement money, identified by its provider key.
+ *
+ * The worker suffixes those keys with `:sheltered` rather than relying on the
+ * display name, which the user is free to rename. Renaming an account must not
+ * change whether its dividends count as spendable.
+ */
+function isShelteredAccount(account) {
+  return Boolean(account && /:sheltered$/.test(String(account.provider || '')));
+}
+
+/**
+ * Forget every retirement account and the shares filed under it.
+ *
+ * Turning the toggle off has to work offline: the user is saying "stop
+ * counting these", and making them sync first in order to see a smaller number
+ * would be backwards. Turning it on genuinely does need a sync, because those
+ * holdings were never fetched in the first place.
+ *
+ * Returns how many accounts were removed, so the caller can stay quiet when
+ * there was nothing to remove.
+ */
+function dropShelteredAccounts() {
+  const doomed = (state.accounts || []).filter(isShelteredAccount);
+  if (doomed.length === 0) return 0;
+  for (const account of doomed) {
+    const result = removeAccount(state.accounts, state.lots, account.id);
+    state.accounts = result.accounts;
+    state.lots = result.lots;
+  }
+  commitLots();
+  renderHoldingsInputs();
+  render();
+  return doomed.length;
 }
 
 /**
@@ -1850,7 +1919,7 @@ async function openPlaidLink(key, button, restore) {
         setStatus(described.text + (payload.persisted
           ? ' Connection saved, so future syncs skip the bank sign-in.'
           : ' Access token discarded (no KV bound).')
-          + describeSkipped(skipped) + state.syncNote, 'ok');
+          + describeSkipped(skipped, state.prefs.includeSheltered) + state.syncNote, 'ok');
         refreshConnectionList(key);
       } catch (err) {
         setStatus('Sync failed: ' + err.message, 'error');
@@ -1949,7 +2018,7 @@ async function syncFromBank() {
       const described = describeSync(summary, trackedSymbols(), 'Refreshed', skipped);
       setStatus(described.ok
         ? described.text + ' No new bank sign-in needed.'
-          + describeSkipped(skipped) + state.syncNote
+          + describeSkipped(skipped, state.prefs.includeSheltered) + state.syncNote
         : described.text, described.ok ? 'ok' : 'error');
       refreshConnectionList(key);
       restore();
@@ -2071,9 +2140,35 @@ async function syncFromSnaptrade() {
     const summary = applyConnections(connections, 'snaptrade');
     const skipped = skippedFrom(payload);
     const described = describeSync(summary, trackedSymbols(), 'Synced', skipped);
+
+    // Retirement accounts arrive on every sync but are only filed when asked
+    // for. Kept in their own buckets rather than merged, so the spendable total
+    // stays legible beside them and unchecking the box can remove exactly
+    // those. Unchecking also cleans up, in case the box was turned off between
+    // syncs.
+    let shelteredNote = '';
+    if (state.prefs.includeSheltered) {
+      const shelteredConns = Array.isArray(payload.sheltered) ? payload.sheltered : [];
+      // The overlap warning does not apply here. It exists to catch an
+      // aggregator reporting the same holdings under an unfamiliar name, where
+      // adding them would double-count. A retirement bucket overlapping its own
+      // institution is the entire point: those are different shares in a
+      // different wrapper, and telling the user to "remove the duplicate" would
+      // be advising them to delete what they just asked for.
+      const noteBefore = state.syncNote;
+      const shelteredSummary = applyConnections(shelteredConns, 'snaptrade');
+      state.syncNote = noteBefore;
+      if (shelteredSummary.total > 0) {
+        shelteredNote = ` Retirement accounts included separately: ${shelteredSummary.applied
+          .map((a) => `${a.label} (${a.kept})`).join(', ')}.`;
+      }
+    } else if (dropShelteredAccounts()) {
+      shelteredNote = ' Retirement accounts were removed, as the box is unticked.';
+    }
+
     setStatus(described.ok
-      ? described.text + describeSkipped(skipped) + state.syncNote
-      : described.text, described.ok ? 'ok' : 'error');
+      ? described.text + describeSkipped(skipped, state.prefs.includeSheltered) + shelteredNote + state.syncNote
+      : described.text + shelteredNote, described.ok ? 'ok' : 'error');
   } catch (err) {
     setStatus('SnapTrade sync failed: ' + err.message, 'error');
   } finally {
@@ -2421,6 +2516,8 @@ function activate() {
 
   document.getElementById('hide-projected').checked = !!state.prefs.hideProjected;
   document.getElementById('drip-toggle').checked = !!state.prefs.drip;
+  const shelteredBox = document.getElementById('include-sheltered');
+  if (shelteredBox) shelteredBox.checked = !!state.prefs.includeSheltered;
   document.querySelectorAll('.segmented button').forEach((button) => {
     button.classList.toggle('active', button.dataset.range === state.prefs.range);
   });
@@ -2457,6 +2554,7 @@ if (typeof module !== 'undefined' && module.exports) {
     describeSync,
     describeSkipped,
     skippedFrom,
+    isShelteredAccount,
     connectionsFrom,
     reconcileFlatHoldings,
     removeAccount,

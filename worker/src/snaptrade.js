@@ -201,30 +201,37 @@ async function listAccounts(env) {
 }
 
 /**
- * Reads positions across every connected account, grouped by institution.
+ * Reads every connected account, split three ways.
  *
- * One brokerage login can expose several accounts (brokerage, Roth, HSA), and
- * the same fund is often held in more than one, so accounts AT THE SAME
- * institution are summed. Different institutions are kept apart: merging
- * Fidelity into U.S. Bank would throw away which shares came from where, and
- * the page files shares per account precisely so syncing one cannot disturb
- * the other.
+ * A brokerage login covers three different kinds of account, and conflating
+ * them answers the wrong question:
  *
- * Grouping is by the brokerage authorization id where SnapTrade provides one,
- * falling back to the institution name. The id is stable; the name is what
- * SnapTrade prints, and a re-worded name must not look like a new institution.
+ *   connections - accounts whose dividends can be spent when they land
+ *   sheltered   - retirement and health accounts, same shape, reported
+ *                 separately so the page can offer them without counting them
+ *   cards       - credit cards, which are balances owed rather than holdings
+ *
+ * Cards cost no extra requests: the balance is already in the /accounts
+ * response. Sheltered accounts cost one request each, which is affordable -
+ * SnapTrade allows 250 requests a minute (x-ratelimit-limit) and a 20-account
+ * login uses about a dozen.
+ *
+ * Accounts at the same institution are summed; different institutions are kept
+ * apart, because the page files shares per account precisely so that syncing
+ * one cannot disturb another.
  */
 async function fetchSnaptradeHoldings(env) {
   const all = await listAccounts(env);
   if (all.length === 0) {
-    return { connections: [], holdings: {}, institution: null, accounts: 0, connected: false };
+    return {
+      connections: [], sheltered: [], cards: [], skipped: [], errors: [],
+      holdings: {}, institution: null, accounts: 0, connected: false,
+    };
   }
 
-  // Classify before fetching anything. A credit card and a chequing account
-  // have no positions to read, and a retirement account's dividends are not
-  // spendable, so all three are requests worth not making: a real login was 14
-  // accounts, of which 5 are worth reading.
-  const kept = [];
+  const spendable = [];
+  const shelteredAccounts = [];
+  const cards = [];
   const skipped = [];
   for (const account of all) {
     const kind = classifyAccount({
@@ -232,62 +239,22 @@ async function fetchSnaptradeHoldings(env) {
       type: account && account.raw_type,
       name: account && account.name,
     });
-    if (kind === "spendable") kept.push(account);
-    else skipped.push({ name: (account && account.name) || "an account", kind });
+    if (kind === "spendable") {
+      spendable.push(account);
+      continue;
+    }
+    skipped.push({ name: (account && account.name) || "an account", kind });
+    if (kind === "sheltered") shelteredAccounts.push(account);
+    else if (kind === "credit") cards.push(describeCard(account));
   }
 
-  if (kept.length === 0) {
-    return {
-      connections: [], holdings: {}, institution: null,
-      accounts: all.length, skipped, connected: true,
-    };
-  }
+  const [spendableResult, shelteredResult] = await Promise.all([
+    readGroups(env, spendable, ""),
+    readGroups(env, shelteredAccounts, " retirement"),
+  ]);
 
-  // Fetched concurrently. One request per account, and sequentially a real
-  // login took about nine seconds - a long time to hold a button down.
-  const settled = await Promise.all(kept.map(async (account) => {
-    const id = account && (account.id || account.account_id);
-    if (!id) return null;
-    const name = (account && (account.institution_name || account.brokerage_authorization_name)) || null;
-    const auth = account && account.brokerage_authorization;
-    const key = String((auth && (auth.id || auth)) || name || "snaptrade");
-
-    let positions = [];
-    try {
-      positions = await snaptrade(env, "GET", `/accounts/${encodeURIComponent(id)}/positions`, null);
-    } catch (err) {
-      try {
-        // Older deployments and some account types still answer on /holdings.
-        const wrapper = await snaptrade(env, "GET", `/accounts/${encodeURIComponent(id)}/holdings`, null);
-        positions = (wrapper && wrapper.positions) || [];
-      } catch (inner) {
-        // One unreadable account must not fail the whole sync. A plan account
-        // that answers neither endpoint would otherwise stop the brokerage
-        // account beside it from reporting at all.
-        return { key, name, positions: [], error: `${name || "An account"}: ${inner.message}` };
-      }
-    }
-    return { key, name, positions: Array.isArray(positions) ? positions : [] };
-  }));
-
-  const groups = new Map();
-  const errors = [];
-  for (const entry of settled) {
-    if (!entry) continue;
-    if (entry.error) errors.push(entry.error);
-    if (!groups.has(entry.key)) {
-      groups.set(entry.key, { key: entry.key, institution: entry.name, holdings: {}, accounts: 0 });
-    }
-    const group = groups.get(entry.key);
-    group.accounts += 1;
-    if (!group.institution && entry.name) group.institution = entry.name;
-    const partial = aggregatePositions(entry.positions);
-    for (const [sym, qty] of Object.entries(partial)) {
-      group.holdings[sym] = (group.holdings[sym] || 0) + qty;
-    }
-  }
-
-  const connections = [...groups.values()];
+  const connections = spendableResult.connections;
+  const errors = spendableResult.errors.concat(shelteredResult.errors);
 
   // Name every linked brokerage rather than counting them. Only used for
   // display now that each connection carries its own name, but "2 accounts"
@@ -307,14 +274,126 @@ async function fetchSnaptradeHoldings(env) {
 
   return {
     connections,
+    sheltered: shelteredResult.connections,
+    cards,
     errors,
     skipped,
     holdings: merged,
     institution,
-    accounts: kept.length,
+    accounts: spendable.length,
     connected: true,
   };
 }
+
+/**
+ * A credit card as a balance rather than a holding.
+ *
+ * SnapTrade reports what is owed as a NEGATIVE amount, which reads as a credit
+ * on screen. `owed` is the positive figure a cardholder would recognise, so a
+ * card owing $1,234.56 reports owed: 1234.56. A card genuinely in credit keeps
+ * a negative `owed`, which keeps the two cases distinguishable instead of
+ * collapsing both to a magnitude.
+ */
+function describeCard(account) {
+  const total = account && account.balance && account.balance.total;
+  const amount = total && typeof total.amount === "number" ? total.amount : null;
+  const sync = account && account.sync_status && account.sync_status.holdings;
+  return {
+    key: String((account && (account.id || account.account_id)) || ""),
+    institution: (account && account.institution_name) || null,
+    name: (account && account.name) || "Credit card",
+    owed: amount === null ? null : -amount,
+    currency: (total && total.currency) || "USD",
+    syncedAt: (sync && sync.last_successful_sync) || null,
+  };
+}
+
+/**
+ * Read positions for a set of accounts and group them by institution.
+ *
+ * Concurrent because one request per account, sequentially, took about nine
+ * seconds on a real login - a long time to hold a button down. One account
+ * that answers neither endpoint is recorded and skipped rather than failing
+ * the whole sync: a plan account should not stop the brokerage account beside
+ * it from reporting.
+ *
+ * `suffix` distinguishes the sheltered pass. It changes both the storage key
+ * and the display name, so retirement holdings land in their own account
+ * rather than merging into the spendable one.
+ */
+async function readGroups(env, accounts, suffix) {
+  if (!accounts || accounts.length === 0) return { connections: [], errors: [] };
+
+  const settled = await Promise.all(accounts.map(async (account) => {
+    const id = account && (account.id || account.account_id);
+    if (!id) return null;
+    const name = (account && (account.institution_name || account.brokerage_authorization_name)) || null;
+    const auth = account && account.brokerage_authorization;
+    const base = String((auth && (auth.id || auth)) || name || "snaptrade");
+    const key = suffix ? `${base}:sheltered` : base;
+
+    let positions = [];
+    try {
+      positions = await snaptrade(env, "GET", `/accounts/${encodeURIComponent(id)}/positions`, null);
+    } catch (err) {
+      try {
+        // Older deployments and some account types still answer on /holdings.
+        const wrapper = await snaptrade(env, "GET", `/accounts/${encodeURIComponent(id)}/holdings`, null);
+        positions = (wrapper && wrapper.positions) || [];
+      } catch (inner) {
+        return { key, name, positions: [], error: `${name || "An account"}: ${inner.message}` };
+      }
+    }
+    return { key, name, positions: Array.isArray(positions) ? positions : [] };
+  }));
+
+  const groups = new Map();
+  const errors = [];
+  for (const entry of settled) {
+    if (!entry) continue;
+    if (entry.error) errors.push(entry.error);
+    const label = entry.name ? entry.name + (suffix || "") : null;
+    if (!groups.has(entry.key)) {
+      groups.set(entry.key, { key: entry.key, institution: label, holdings: {}, accounts: 0 });
+    }
+    const group = groups.get(entry.key);
+    group.accounts += 1;
+    if (!group.institution && label) group.institution = label;
+    const partial = aggregatePositions(entry.positions);
+    for (const [sym, qty] of Object.entries(partial)) {
+      group.holdings[sym] = (group.holdings[sym] || 0) + qty;
+    }
+  }
+
+  return { connections: [...groups.values()], errors };
+}
+
+/**
+ * Order credit cards for display.
+ *
+ * Cards with something owed come first, alphabetically; cards with nothing
+ * owed come after them, also alphabetically. A paid-off card is not
+ * interesting until it is used again, but hiding it entirely would make it
+ * look disconnected, so it sinks rather than disappears.
+ *
+ * A card in genuine credit (the issuer owes you) counts as outstanding: it is
+ * a non-zero balance and worth seeing.
+ */
+function sortCards(cards) {
+  return [...(cards || [])].sort((a, b) => {
+    const aZero = !a.owed;
+    const bZero = !b.owed;
+    if (aZero !== bZero) return aZero ? 1 : -1;
+    return String(a.name || "").localeCompare(String(b.name || ""), undefined,
+      { sensitivity: "base", numeric: true });
+  });
+}
+
+/** Total owed across every card, ignoring any whose balance failed to read. */
+function totalOwed(cards) {
+  return (cards || []).reduce((sum, c) => sum + (typeof c.owed === "number" ? c.owed : 0), 0);
+}
+
 
 export {
   canonicalJson,
@@ -325,6 +404,9 @@ export {
   extractTicker,
   extractUnits,
   createPortalUrl,
+  describeCard,
+  sortCards,
+  totalOwed,
   listAccounts,
   fetchSnaptradeHoldings,
 };

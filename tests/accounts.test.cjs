@@ -26,6 +26,7 @@ const {
   describeSync,
   describeSkipped,
   skippedFrom,
+  isShelteredAccount,
   connectionsFrom,
   reconcileFlatHoldings,
   removeAccount,
@@ -623,4 +624,29 @@ test('skipped cards alone never trigger the retirement wording', () => {
     { applied: [], empty: [{ label: 'Robinhood', holdings: {} }], total: 0, count: 1 },
     T3, 'Synced', [{ name: 'Robinhood Credit Card', kind: 'credit' }]);
   assert.doesNotMatch(text, /retirement or health/);
+});
+
+/* ------------------------------------------ the retirement-accounts toggle */
+
+test('a retirement bucket is recognised by its provider key, not its name', () => {
+  // The name is the user's to change; whether dividends are spendable is not.
+  assert.ok(isShelteredAccount({ provider: 'snaptrade:abc:sheltered', name: 'Anything At All' }));
+  assert.ok(!isShelteredAccount({ provider: 'snaptrade:abc', name: 'Fidelity retirement' }),
+    'a spendable account named "retirement" must not be treated as sheltered');
+  assert.ok(!isShelteredAccount({ provider: 'plaid:ins_1', name: 'ROTH IRA' }));
+  assert.ok(!isShelteredAccount({}));
+  assert.ok(!isShelteredAccount(null));
+});
+
+test('the suffix must be at the end, so it cannot match by accident', () => {
+  assert.ok(!isShelteredAccount({ provider: 'snaptrade:sheltered:abc' }));
+  assert.ok(isShelteredAccount({ provider: 'x:sheltered' }));
+});
+
+test('nothing is said about skipped retirement accounts when they were included', () => {
+  // Saying "Not counted: ROTH IRA" while its shares are on screen would be a
+  // lie about the very number being shown.
+  const skipped = [{ name: 'ROTH IRA', kind: 'sheltered' }];
+  assert.strictEqual(describeSkipped(skipped, true), '');
+  assert.match(describeSkipped(skipped, false), /Not counted/);
 });

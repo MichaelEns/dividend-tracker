@@ -348,6 +348,34 @@ whatever the brokerage chose to send — Fidelity returns clean codes but also
 free text like "Fidelity Credit Card". Name matching uses word boundaries: a
 bare substring test for `ira` matches "spiral".
 
+### Seeing them anyway
+
+The retirement holdings are still fetched — a checkbox in the holdings panel,
+**Include retirement accounts**, files them as *separate* accounts named
+"<Institution> retirement" rather than merging them in. Separate rather than
+merged so the spendable total stays legible beside them, and so unticking the
+box can remove exactly those buckets.
+
+Unticking works offline and immediately. The user is saying "stop counting
+these", and making them sync first in order to see a *smaller* number would be
+backwards. Ticking it on does need a sync, because those holdings were never
+filed.
+
+Two details that would otherwise mislead:
+
+- With the box ticked, the "Not counted:" note is suppressed. Naming accounts
+  as excluded while their shares are on screen would be a lie about the very
+  number being shown.
+- The "is this the same money reported twice?" warning is suppressed for
+  retirement buckets. That warning catches an aggregator reporting known
+  holdings under an unfamiliar name; a retirement bucket overlapping its own
+  institution is the entire point, and advising the user to "remove the
+  duplicate" would tell them to delete what they just asked for.
+
+Sheltered accounts are identified by a `:sheltered` suffix on the provider key,
+never by the display name — the name is the user's to change, and renaming an
+account must not change whether its dividends count as spendable.
+
 Skipping non-investment accounts also saves the requests. A 14-account read
 became a 5-account read.
 
