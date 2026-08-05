@@ -76,6 +76,9 @@ jobs:
       - name: Run PWA manifest tests
         run: node --test tests/pwa.test.mjs
 
+      - name: Run Plaid account isolation tests
+        run: node --test tests/plaid-accounts.test.mjs
+
       - name: Refresh data.json
         run: python build.py --verbose
 

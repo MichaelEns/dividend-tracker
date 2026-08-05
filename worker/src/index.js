@@ -289,17 +289,76 @@ async function safeJson(req) {
   try { return await req.json(); } catch { return null; }
 }
 
-function plaidBase(env) {
-  return PLAID_HOSTS[(env.PLAID_ENV || "production").toLowerCase()] || PLAID_HOSTS.production;
+/**
+ * Which Plaid developer account to use for a given kind of connection.
+ *
+ * The two apps can run against entirely separate Plaid accounts. That matters
+ * because the free Trial plan grants 10 Production Items for the *lifetime of
+ * the account*, so a second account gives the balances app its own budget:
+ * re-linking a flaky Canadian bank then cannot consume slots the brokerage
+ * needs. It also lets one app stay on sandbox while the other runs production.
+ *
+ * Everything falls back to the shared credentials, so a single-account setup
+ * keeps working with nothing configured.
+ */
+function plaidCreds(env, scope) {
+  const shared = {
+    clientId: env.PLAID_CLIENT_ID,
+    secret: env.PLAID_SECRET,
+    host: PLAID_HOSTS[String(env.PLAID_ENV || "production").toLowerCase()]
+      || PLAID_HOSTS.production,
+  };
+  if (scope !== SCOPE_BALANCES) return shared;
+
+  // The override is a credential *set*, taken whole or not at all. Falling back
+  // field by field would pair one account's client id with the other's secret,
+  // which authenticates as neither - and Plaid reports that as a plain
+  // credentials error, so it reads like the bank link broke rather than like a
+  // typo in the worker's configuration.
+  const parts = [
+    env.PLAID_BALANCE_CLIENT_ID, env.PLAID_BALANCE_SECRET, env.PLAID_BALANCE_ENV,
+  ];
+  if (!parts.some(Boolean)) return shared;
+
+  const missing = [];
+  if (!env.PLAID_BALANCE_CLIENT_ID) missing.push("PLAID_BALANCE_CLIENT_ID");
+  if (!env.PLAID_BALANCE_SECRET) missing.push("PLAID_BALANCE_SECRET");
+  if (missing.length) {
+    throw new Error(
+      `The balances app is partly configured for its own Plaid account but ${missing.join(" and ")} ` +
+      "is missing. A Plaid secret is specific to one account and one environment, so the client id " +
+      "and secret must be set together. Unset every PLAID_BALANCE_* variable to share one account."
+    );
+  }
+
+  return {
+    clientId: env.PLAID_BALANCE_CLIENT_ID,
+    secret: env.PLAID_BALANCE_SECRET,
+    host: PLAID_HOSTS[String(env.PLAID_BALANCE_ENV || env.PLAID_ENV || "production").toLowerCase()]
+      || PLAID_HOSTS.production,
+  };
 }
 
-async function plaid(env, path, body) {
-  const resp = await fetch(`${plaidBase(env)}${path}`, {
+/**
+ * A Plaid access token belongs to the credential pair that created it, so a
+ * stored connection has to be read back with the same account that linked it.
+ * Passing the item rather than a scope makes that hard to get wrong.
+ */
+function plaidCredsFor(env, item) {
+  return plaidCreds(env, (item && item.scope) === SCOPE_BALANCES
+    ? SCOPE_BALANCES : SCOPE_HOLDINGS);
+}
+
+async function plaid(env, path, body, scope) {
+  const creds = typeof scope === "object" && scope !== null
+    ? scope
+    : plaidCreds(env, scope);
+  const resp = await fetch(`${creds.host}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      client_id: env.PLAID_CLIENT_ID,
-      secret: env.PLAID_SECRET,
+      client_id: creds.clientId,
+      secret: creds.secret,
       ...body,
     }),
   });
@@ -340,14 +399,14 @@ async function createLinkToken(env, scope) {
     products,
     country_codes: countryCodes,
     language: "en",
-  });
+  }, scope);
   return { link_token: payload.link_token };
 }
 
 async function exchangeAndFetch(env, publicToken, scope) {
   const exchange = await plaid(env, "/item/public_token/exchange", {
     public_token: publicToken,
-  });
+  }, scope);
   const accessToken = exchange.access_token;
   if (!accessToken) throw new Error("Plaid returned no access_token.");
 
@@ -360,12 +419,14 @@ async function exchangeAndFetch(env, publicToken, scope) {
     // fail and the bank would never link at all. "A token we could not use"
     // has to mean something different depending on what it was linked for.
     result = balances
-      ? await fetchAccountSummary(env, accessToken)
-      : await fetchHoldings(env, accessToken);
+      ? await fetchAccountSummary(env, accessToken, scope)
+      : await fetchHoldings(env, accessToken, scope);
   } catch (err) {
     // Never keep a token we could not actually use.
     if (!canPersist) {
-      try { await plaid(env, "/item/remove", { access_token: accessToken }); } catch { /* ignore */ }
+      try {
+        await plaid(env, "/item/remove", { access_token: accessToken }, scope);
+      } catch { /* ignore */ }
     }
     throw err;
   }
@@ -401,9 +462,11 @@ async function exchangeAndFetch(env, publicToken, scope) {
       const previous = items[existing];
       if (previous.access_token && previous.access_token !== accessToken) {
         // Otherwise the superseded Item stays subscribed and billable with its
-        // token no longer known to us.
+        // token no longer known to us. Removed with the credentials that
+        // created it, which need not be the ones linking the replacement.
         try {
-          await plaid(env, "/item/remove", { access_token: previous.access_token });
+          await plaid(env, "/item/remove", { access_token: previous.access_token },
+            plaidCredsFor(env, previous));
         } catch { /* non-fatal: the new token is what matters */ }
       }
       items[existing] = record;
@@ -415,7 +478,7 @@ async function exchangeAndFetch(env, publicToken, scope) {
     // No KV bound: keep the original one-off contract rather than silently
     // leaving a live token behind that nothing can ever remove.
     try {
-      await plaid(env, "/item/remove", { access_token: accessToken });
+      await plaid(env, "/item/remove", { access_token: accessToken }, scope);
     } catch { /* worst case, we just leave an orphan token with Plaid */ }
   }
 
@@ -463,7 +526,7 @@ async function refreshHoldings(env) {
   let mutated = false;
   for (const item of holdingItems) {
     try {
-      const result = await fetchHoldings(env, item.access_token);
+      const result = await fetchHoldings(env, item.access_token, plaidCredsFor(env, item));
       if (result.institution && result.institution !== item.institution) {
         item.institution = result.institution;
         mutated = true;
@@ -517,7 +580,8 @@ async function disconnectItem(env, key) {
     // Ends the Investments subscription on a paid plan. Note this does NOT
     // return the consumed slot on a Trial plan - that quota is permanent.
     try {
-      await plaid(env, "/item/remove", { access_token: item.access_token });
+      await plaid(env, "/item/remove", { access_token: item.access_token },
+        plaidCredsFor(env, item));
     } catch { /* still forget it locally */ }
   }
 
@@ -571,7 +635,7 @@ async function readBalances(env) {
     try {
       const payload = await plaid(env, "/accounts/balance/get", {
         access_token: item.access_token,
-      });
+      }, plaidCredsFor(env, item));
       return {
         key,
         institution: item.institution || null,
@@ -625,17 +689,17 @@ function describeAccount(account) {
   };
 }
 
-async function fetchHoldings(env, accessToken) {
+async function fetchHoldings(env, accessToken, scope) {
   const investments = await plaid(env, "/investments/holdings/get", {
     access_token: accessToken,
-  });
+  }, scope);
   const { holdings, skipped } = aggregateHoldings(investments);
 
   // The id is what identifies the connection in storage; the name is only for
   // display, because Plaid re-words those and a re-wording must not fork the
   // stored connection into a second one holding the same shares.
   const institutionId = (investments.item && investments.item.institution_id) || null;
-  const institutionName = await lookupInstitutionName(env, institutionId);
+  const institutionName = await lookupInstitutionName(env, institutionId, scope);
   return { holdings, institution: institutionName, institutionId, skipped };
 }
 
@@ -647,10 +711,10 @@ async function fetchHoldings(env, accessToken) {
  * works, and gets the institution name, without asking for anything a Canadian
  * retail bank does not have.
  */
-async function fetchAccountSummary(env, accessToken) {
-  const payload = await plaid(env, "/accounts/get", { access_token: accessToken });
+async function fetchAccountSummary(env, accessToken, scope) {
+  const payload = await plaid(env, "/accounts/get", { access_token: accessToken }, scope);
   const institutionId = (payload.item && payload.item.institution_id) || null;
-  const institutionName = await lookupInstitutionName(env, institutionId);
+  const institutionName = await lookupInstitutionName(env, institutionId, scope);
   return {
     holdings: {},
     institution: institutionName,
@@ -666,7 +730,7 @@ async function fetchAccountSummary(env, accessToken) {
  * Canadian bank would simply show up unnamed. Both country lists are searched
  * because the two pages deliberately use different ones.
  */
-async function lookupInstitutionName(env, institutionId) {
+async function lookupInstitutionName(env, institutionId, scope) {
   if (!institutionId) return null;
   const codes = [
     ...(env.PLAID_COUNTRY_CODES || "US").split(","),
@@ -676,7 +740,7 @@ async function lookupInstitutionName(env, institutionId) {
     const inst = await plaid(env, "/institutions/get_by_id", {
       institution_id: institutionId,
       country_codes: [...new Set(codes)],
-    });
+    }, scope);
     return (inst && inst.institution && inst.institution.name) || null;
   } catch {
     return null; // non-fatal: the connection still works, it is just unnamed

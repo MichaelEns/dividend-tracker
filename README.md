@@ -922,7 +922,6 @@ and correspondingly more fragile** — expect those two to need re-linking.
 `auth` or `transactions`, then call `/accounts/balance/get`.
 
 ### Why a link has a scope
-
 That `investments` column is the reason `/link/token/create` and
 `/link/token/exchange` take a `scope`. **Three of the four banks do not support
 the investments product at all**, and asking Link for it does not merely return
@@ -945,6 +944,55 @@ indistinguishable from a stale login that the user could actually fix.
 
 `/balances` deliberately reads **all** of them: cash sitting at a brokerage is
 still cash.
+
+### A separate Plaid account for balances
+
+The two apps can run against **entirely separate Plaid developer accounts**:
+
+```powershell
+wrangler secret put PLAID_BALANCE_CLIENT_ID
+wrangler secret put PLAID_BALANCE_SECRET
+wrangler secret put PLAID_BALANCE_ENV       # optional; defaults to PLAID_ENV
+```
+
+Unset, everything falls back to the shared `PLAID_*` credentials, which is the
+setup that existed before and still works unchanged.
+
+Two reasons to bother:
+
+- **Each free Trial account grants its own 10 Production Items, for the
+  lifetime of that account.** Scotiabank and Meridian are the connections most
+  likely to break and need re-linking, and every re-link permanently consumes a
+  slot. On one account those re-links eat the budget the brokerage needs; on
+  two, the damage stops at the balances app.
+- **Different environments.** The dividend app can stay on sandbox while
+  balances runs against real Canadian banks, because the environment travels
+  with the account rather than being global.
+
+Worth being clear about the trade: Plaid's Trial terms are per account, and
+opening accounts specifically to farm free Items is the kind of thing that gets
+them closed. Two accounts for two genuinely separate apps is ordinary; ten
+accounts for a hundred Items is not.
+
+**A Plaid access token belongs to the credential pair that created it.** That
+is the whole difficulty, and it is invisible when wrong: read a stored
+connection back with the other account's credentials and Plaid returns a
+routine credentials error, which surfaces as a *failed bank connection* —
+indistinguishable from a password change the user could fix. They could not. So
+the stored record's `scope` selects the credentials for every call that touches
+its token: refresh, balance read, and `/item/remove`.
+
+Getting `/item/remove` wrong is the expensive one. It fails, the connection is
+forgotten locally anyway, and the Item stays live having permanently consumed
+one of the ten slots. `tests/plaid-accounts.test.mjs` drives the real worker
+with a stubbed `fetch` and asserts which account each request was billed to,
+so a missed call site fails there rather than in production.
+
+The client id and secret must be set **together**. Falling back field by field
+pairs one account's id with the other's secret, which authenticates as neither;
+the worker refuses the link and names the missing variable instead. That rule
+exists because the first version did fall back per field, and the test above
+caught it doing exactly that.
 
 ### Getting a real (free) Plaid account
 
@@ -997,6 +1045,7 @@ node --test tests/accounts.test.cjs        # per-account share counts + migratio
 node --test tests/paydates.test.cjs        # the folded portrait date column
 node --test tests/balances.test.mjs       # bank balances: grouping, currency, credit signs
 node --test tests/pwa.test.mjs            # two installable apps: manifests, icons, identity
+node --test tests/plaid-accounts.test.mjs # per-app Plaid accounts, and token/credential pairing
 ```
 
 There is also an end-to-end smoke test that loads the real page in headless Edge
