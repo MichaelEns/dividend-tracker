@@ -1709,10 +1709,30 @@ function applyConnections(connections, provider) {
  * Kept separate from applyConnections so it can be tested without a DOM, and
  * so the wording is decided in one place rather than at four call sites.
  */
-function describeSync(summary, tracked, verb) {
+function describeSync(summary, tracked, verb, skipped) {
   const { applied, empty } = summary;
   const done = verb || 'Synced';
   if (applied.length === 0) {
+    // Distinguish "this institution holds nothing I track" from "everything it
+    // holds sits in a retirement account". Both end with no shares written, but
+    // the first is a fact about the portfolio and the second is a decision this
+    // code made - and reporting the second as "0 positions matched" reads as a
+    // broken sync. Plaid's own sandbox is exactly this case: its stock holdings
+    // live entirely in an IRA and a 401(k).
+    const sheltered = (skipped || []).filter((s) => s && s.kind === 'sheltered');
+    const foundNothing = empty.every((e) => Object.keys(e.holdings || {}).length === 0);
+    if (sheltered.length && foundNothing) {
+      const names = sheltered.map((s) => s.name).filter(Boolean);
+      const shown = names.slice(0, 3).join(', ');
+      const rest = names.length > 3 ? `, and ${names.length - 3} more` : '';
+      const where = empty.map((e) => e.label).filter(Boolean).join(', ') || 'the connection';
+      return {
+        text: `${done} ${where}, but everything it holds is in a retirement or health `
+          + `account (${shown}${rest}). Dividends there are reinvested rather than reaching `
+          + 'a spendable balance, so nothing was added.',
+        ok: false,
+      };
+    }
     if (empty.length === 1) {
       return { text: unmatchedMessage(empty[0].holdings, empty[0].label, tracked), ok: false };
     }
@@ -1732,6 +1752,44 @@ function describeSync(summary, tracked, verb) {
     text += ` ${empty.map((e) => e.label).join(', ')} reported nothing tracked.`;
   }
   return { text, ok: true };
+}
+
+/**
+ * Say which accounts were left out, and why.
+ *
+ * The worker counts only accounts whose dividends could be spent on arrival,
+ * so a Roth IRA and an HSA are excluded. That is the right default, but it
+ * silently changes the numbers - a Fidelity login covering nine accounts would
+ * report shares from three of them with nothing to say so. An unexplained
+ * shortfall reads as a bug; a named one reads as a decision.
+ *
+ * Credit cards and chequing accounts are not mentioned: they hold no positions
+ * to begin with, so listing them would be noise rather than information.
+ */
+function describeSkipped(skipped) {
+  const sheltered = (skipped || []).filter((s) => s && s.kind === 'sheltered');
+  if (sheltered.length === 0) return '';
+  const names = sheltered.map((s) => s.name).filter(Boolean);
+  const shown = names.slice(0, 3).join(', ');
+  const rest = names.length > 3 ? `, and ${names.length - 3} more` : '';
+  return ` Not counted: ${shown}${rest} — dividends there are reinvested inside a `
+    + 'retirement or health account rather than reaching a spendable balance.';
+}
+
+/**
+ * Collect every skipped account across a payload's connections.
+ *
+ * SnapTrade reports them once for the whole read; Plaid reports them per
+ * connection, since each Item is a separate institution.
+ */
+function skippedFrom(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload.skipped)) return payload.skipped;
+  const out = [];
+  for (const conn of (payload.connections || [])) {
+    for (const s of (conn.skipped || [])) out.push(s);
+  }
+  return out;
 }
 
 /**
@@ -1782,7 +1840,8 @@ async function openPlaidLink(key, button, restore) {
           throw new Error('The worker returned no holdings.');
         }
         const summary = applyConnections(connections, 'plaid');
-        const described = describeSync(summary, trackedSymbols());
+        const skipped = skippedFrom(payload);
+        const described = describeSync(summary, trackedSymbols(), 'Synced', skipped);
         if (!described.ok) {
           setStatus(described.text, 'error');
           restore();
@@ -1790,7 +1849,8 @@ async function openPlaidLink(key, button, restore) {
         }
         setStatus(described.text + (payload.persisted
           ? ' Connection saved, so future syncs skip the bank sign-in.'
-          : ' Access token discarded (no KV bound).') + state.syncNote, 'ok');
+          : ' Access token discarded (no KV bound).')
+          + describeSkipped(skipped) + state.syncNote, 'ok');
         refreshConnectionList(key);
       } catch (err) {
         setStatus('Sync failed: ' + err.message, 'error');
@@ -1885,9 +1945,11 @@ async function syncFromBank() {
       const connections = connectionsFrom(payload, status.institution || 'Bank sync');
       if (connections.length === 0) throw new Error('The worker returned no holdings.');
       const summary = applyConnections(connections, 'plaid');
-      const described = describeSync(summary, trackedSymbols(), 'Refreshed');
+      const skipped = skippedFrom(payload);
+      const described = describeSync(summary, trackedSymbols(), 'Refreshed', skipped);
       setStatus(described.ok
-        ? described.text + ' No new bank sign-in needed.' + state.syncNote
+        ? described.text + ' No new bank sign-in needed.'
+          + describeSkipped(skipped) + state.syncNote
         : described.text, described.ok ? 'ok' : 'error');
       refreshConnectionList(key);
       restore();
@@ -2007,9 +2069,11 @@ async function syncFromSnaptrade() {
 
     const connections = connectionsFrom(payload, 'SnapTrade');
     const summary = applyConnections(connections, 'snaptrade');
-    const described = describeSync(summary, trackedSymbols());
-    setStatus(described.ok ? described.text + state.syncNote : described.text,
-      described.ok ? 'ok' : 'error');
+    const skipped = skippedFrom(payload);
+    const described = describeSync(summary, trackedSymbols(), 'Synced', skipped);
+    setStatus(described.ok
+      ? described.text + describeSkipped(skipped) + state.syncNote
+      : described.text, described.ok ? 'ok' : 'error');
   } catch (err) {
     setStatus('SnapTrade sync failed: ' + err.message, 'error');
   } finally {
@@ -2391,6 +2455,8 @@ if (typeof module !== 'undefined' && module.exports) {
     unmatchedMessage,
     normalizePassphrase,
     describeSync,
+    describeSkipped,
+    skippedFrom,
     connectionsFrom,
     reconcileFlatHoldings,
     removeAccount,

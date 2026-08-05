@@ -24,6 +24,8 @@ const {
   overlappingSymbols,
   unmatchedMessage,
   describeSync,
+  describeSkipped,
+  skippedFrom,
   connectionsFrom,
   reconcileFlatHoldings,
   removeAccount,
@@ -523,4 +525,102 @@ test('re-wording one institution does not fork it away from the other', () => {
   // tests it for truthiness, so absent and false mean the same thing here.
   assert.ok(!again.created, 'a re-wording should not report a new account');
   assert.strictEqual(again.account.name, 'Fidelity Investments', 'the label should update in place');
+});
+
+/* ------------------------------------- accounts left out of spendable income */
+
+test('skipped retirement accounts are named, not silently dropped', () => {
+  // A Fidelity login covers nine accounts and reports shares from three. An
+  // unexplained shortfall reads as a bug; a named one reads as a decision.
+  const note = describeSkipped([
+    { name: 'ROTH IRA', kind: 'sheltered' },
+    { name: 'Health Savings Account', kind: 'sheltered' },
+  ]);
+  assert.match(note, /ROTH IRA/);
+  assert.match(note, /Health Savings Account/);
+  assert.match(note, /spendable/, 'the note must say why they were left out');
+});
+
+test('cards and chequing accounts are not mentioned', () => {
+  // They hold no positions to begin with, so listing them is noise.
+  const note = describeSkipped([
+    { name: 'Rewards Visa', kind: 'credit' },
+    { name: 'Robinhood Checking', kind: 'deposit' },
+  ]);
+  assert.strictEqual(note, '');
+});
+
+test('nothing skipped means nothing said', () => {
+  assert.strictEqual(describeSkipped([]), '');
+  assert.strictEqual(describeSkipped(null), '');
+  assert.strictEqual(describeSkipped(undefined), '');
+});
+
+test('a long list of skipped accounts is truncated with a count', () => {
+  const note = describeSkipped(
+    ['401(k)', 'Roth IRA', 'HSA', 'Traditional IRA', 'Deferred Comp']
+      .map((name) => ({ name, kind: 'sheltered' })));
+  assert.match(note, /401\(k\), Roth IRA, HSA/);
+  assert.match(note, /and 2 more/);
+  assert.ok(note.length < 260, 'the status line must stay readable: ' + note.length);
+});
+
+test('SnapTrade reports skipped accounts once for the whole read', () => {
+  const payload = { skipped: [{ name: 'ROTH IRA', kind: 'sheltered' }], connections: [] };
+  assert.deepStrictEqual(skippedFrom(payload), [{ name: 'ROTH IRA', kind: 'sheltered' }]);
+});
+
+test('Plaid reports them per connection, since each Item is one institution', () => {
+  const payload = {
+    connections: [
+      { institution: 'Fidelity', skipped: [{ name: 'ROTH IRA', kind: 'sheltered' }] },
+      { institution: 'U.S. Bank', skipped: [{ name: 'IRA', kind: 'sheltered' }] },
+    ],
+  };
+  assert.strictEqual(skippedFrom(payload).length, 2,
+    'a second institution\u2019s skipped accounts were lost');
+});
+
+test('a payload with nothing skipped yields an empty list', () => {
+  assert.deepStrictEqual(skippedFrom({ connections: [{ institution: 'X' }] }), []);
+  assert.deepStrictEqual(skippedFrom({}), []);
+  assert.deepStrictEqual(skippedFrom(null), []);
+});
+
+test('the sync sentence and the skipped note read as one message', () => {
+  const summary = { applied: [{ label: 'Fidelity', kept: 3 }], empty: [], total: 3, count: 1 };
+  const text = describeSync(summary, ['MSFT', 'FXAIX', 'FSKAX']).text
+    + describeSkipped([{ name: 'ROTH IRA', kind: 'sheltered' }]);
+  assert.match(text, /^Synced 3 position\(s\) from Fidelity \(3\)\. Not counted: ROTH IRA/);
+});
+
+test('an all-retirement login is not reported as a failed sync', () => {
+  // Plaid's stock sandbox is exactly this: every holding sits in an IRA or a
+  // 401(k). "0 positions matched" would read as broken rather than filtered.
+  const { text, ok } = describeSync(
+    { applied: [], empty: [{ label: 'First Platypus Bank', holdings: {} }], total: 0, count: 1 },
+    T3, 'Synced',
+    [{ name: 'Plaid IRA', kind: 'sheltered' }, { name: 'Plaid 401k', kind: 'sheltered' }]);
+  assert.strictEqual(ok, false);
+  assert.match(text, /retirement or health account/);
+  assert.match(text, /Plaid IRA, Plaid 401k/, 'the accounts must be named');
+  assert.doesNotMatch(text, /0 position/, 'reporting zero positions hides the real cause');
+});
+
+test('a genuine mismatch keeps the detailed wording', () => {
+  // Something WAS held, it just was not tracked. Different situation, and the
+  // shelter wording would be a lie about the cause.
+  const { text } = describeSync(
+    { applied: [], empty: [{ label: 'Fidelity', holdings: { NVDA: 5, VTI: 2 } }], total: 0, count: 1 },
+    T3, 'Synced', [{ name: 'ROTH IRA', kind: 'sheltered' }]);
+  assert.match(text, /NVDA, VTI/, 'it should still list what actually arrived');
+  assert.doesNotMatch(text, /retirement or health account/,
+    'the shelter wording must not be used when real positions were found');
+});
+
+test('skipped cards alone never trigger the retirement wording', () => {
+  const { text } = describeSync(
+    { applied: [], empty: [{ label: 'Robinhood', holdings: {} }], total: 0, count: 1 },
+    T3, 'Synced', [{ name: 'Robinhood Credit Card', kind: 'credit' }]);
+  assert.doesNotMatch(text, /retirement or health/);
 });

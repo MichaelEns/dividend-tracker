@@ -252,9 +252,15 @@ async function main() {
       && !status.startsWith('(no '), status);
     check('the worker was actually reached', !/Could not start|Sync failed/i.test(status), status);
     check('the sandbox institution is named', /First Platypus Bank/.test(status), status);
-    check('the untracked symbols are named', /ACHN|BTC|CAMYX/.test(status), status);
-    check('the tracked symbols are named', /MSFT/.test(status) && /FXAIX/.test(status), status);
-    check('it says nothing was changed', /Nothing was changed/.test(status), status);
+    // Plaid's stock sandbox holds everything in an IRA and a 401(k), so after
+    // the spendable-accounts filter there is nothing left to import. The page
+    // must say that rather than report a mismatch: "0 positions matched" would
+    // send the reader looking for a broken sync instead of a working filter.
+    check('an all-retirement login explains itself',
+      /retirement or health account/.test(status), status);
+    check('and names the accounts it left out',
+      /IRA/.test(status) && /401k/i.test(status), status);
+    check('it says nothing was added', /nothing was added/i.test(status), status);
 
     const stored = await evalJs("localStorage.getItem('divtracker.holdingLots.v1')");
     check('a sync matching nothing wrote nothing', !stored || stored === '{}', String(stored));
@@ -528,6 +534,35 @@ async function main() {
       check('cash sweep positions were ignored',
         !symbols.some((s) => ['SPAXX', 'FCASH', 'FDRXX'].includes(s)),
         'symbols written: ' + symbols.join(', '));
+
+      // Only accounts whose dividends could be spent on arrival are counted, so
+      // a Roth IRA or an HSA behind the same login must be excluded - and said
+      // so, because an unexplained shortfall reads as a bug.
+      const skipped = await evalJs(`(async () => {
+        const r = await fetch(window.DIVTRACKER_CONFIG.WORKER_BASE + '/snaptrade/holdings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Sync-Key': ${JSON.stringify(HEADER_KEY())} },
+          body: '{}' });
+        const j = await r.json();
+        return JSON.stringify({ skipped: j.skipped || [], read: j.accounts });
+      })()`);
+      const sk = JSON.parse(skipped);
+      const sheltered = sk.skipped.filter((x) => x.kind === 'sheltered');
+      console.log('         read ' + sk.read + ' account(s), skipped ' + sk.skipped.length);
+      for (const x of sk.skipped) console.log(`           [${x.kind}] ${x.name}`);
+
+      if (sheltered.length) {
+        check('the status line names the retirement accounts it left out',
+          /Not counted:/.test(sn.status), sn.status);
+        check('and says why', /spendable/.test(sn.status), sn.status);
+      }
+      const cards = sk.skipped.filter((x) => x.kind === 'credit');
+      if (cards.length) {
+        check('a credit card is classified as credit, not as a holding',
+          cards.every((c) => /card|visa/i.test(c.name)), JSON.stringify(cards));
+        check('cards are not mentioned in the status line',
+          !cards.some((c) => sn.status.includes(c.name)), sn.status);
+      }
 
       const derived = Object.fromEntries(Object.entries(sn.lots).map(
         ([sym, buckets]) => [sym, Object.values(buckets).reduce((a, b) => a + b, 0)]));

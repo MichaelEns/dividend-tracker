@@ -306,6 +306,51 @@ Two consequences worth knowing:
 One press then refreshes every institution, and a failure at one does not stop
 the others: a stale login at U.S. Bank should not prevent Fidelity reporting.
 
+## Only spendable accounts are counted
+
+A brokerage login exposes far more than a taxable brokerage account. One real
+Fidelity consent returned nine accounts and one Robinhood consent five: 401(k),
+deferred compensation, traditional IRA, Roth IRA, ESPP, HSA, individual
+brokerage, cash management, chequing, savings, crypto and two credit cards.
+
+Summing all of them answers the wrong question. A dividend paid inside a Roth
+IRA or an HSA is real money, but it is reinvested behind a tax wrapper — it does
+not arrive anywhere it can be spent, and it cannot be withdrawn without a
+penalty or a taxable event. For a page whose stated purpose is *when does money
+hit my account*, counting it overstates the answer. In one real portfolio it
+inflated projected income by about $1,350 a year.
+
+`worker/src/accounts.js` classifies every account as **spendable**,
+**sheltered**, **credit** or **deposit**, and only spendable accounts count.
+The rule is shared by both providers, because Plaid has the same flaw —
+`/investments/holdings/get` returns holdings for every account behind the Item,
+retirement included, and the old code summed them blindly.
+
+Three things make this safe rather than merely convenient:
+
+- **It fails open.** An account is excluded only when positively identified as
+  sheltered; an unrecognised type is kept. A brokerage this code has never seen
+  would otherwise vanish silently and leave the user short some shares with
+  nothing on screen to explain it. Over-counting is visible and removable;
+  under-counting is not.
+- **It says what it left out.** "Not counted: ROTH IRA, Health Savings
+  Account — dividends there are reinvested…". An unexplained shortfall reads as
+  a bug; a named one reads as a decision. Cards and chequing accounts are not
+  mentioned, because they hold no positions to begin with.
+- **It distinguishes "nothing tracked" from "nothing spendable".** Plaid's own
+  sandbox holds everything in an IRA and a 401(k), so after filtering there is
+  nothing to import. Reporting that as "0 positions matched" would send the
+  reader hunting for a broken sync instead of a working filter.
+
+Matching is on a normalised type code first (`401K`, `ROTH`, `IRA`, `HSA`,
+`NONP`, `RRSP`, `SIPP`…) and on the account name second, because `raw_type` is
+whatever the brokerage chose to send — Fidelity returns clean codes but also
+free text like "Fidelity Credit Card". Name matching uses word boundaries: a
+bare substring test for `ira` matches "spiral".
+
+Skipping non-investment accounts also saves the requests. A 14-account read
+became a 5-account read.
+
 ## Reading the table
 
 ### Quarter colour bands

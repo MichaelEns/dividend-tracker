@@ -73,6 +73,7 @@ import {
   fetchSnaptradeHoldings,
 } from "./snaptrade.js";
 import { authorized, originAllowed } from "./auth.js";
+import { classifyAccount } from "./accounts.js";
 
 const ITEMS_KEY = "plaid:items";
 // Pre-multi-institution deployments stored a single Item here. Read once at
@@ -485,7 +486,7 @@ async function fetchHoldings(env, accessToken) {
   const investments = await plaid(env, "/investments/holdings/get", {
     access_token: accessToken,
   });
-  const holdings = aggregateHoldings(investments);
+  const { holdings, skipped } = aggregateHoldings(investments);
 
   // The id is what identifies the connection in storage; the name is only for
   // display, because Plaid re-words those and a re-wording must not fork the
@@ -503,16 +504,39 @@ async function fetchHoldings(env, accessToken) {
       }
     } catch { /* non-fatal */ }
   }
-  return { holdings, institution: institutionName, institutionId };
+  return { holdings, institution: institutionName, institutionId, skipped };
 }
 
+/**
+ * Sums holdings into {SYMBOL: shares}, counting only spendable accounts.
+ *
+ * Plaid returns holdings for every account behind the Item and tags each with
+ * an account_id, so a 401(k) and a taxable brokerage arrive in one list. Summed
+ * blindly, a Roth IRA's shares inflate the projected income by money that
+ * cannot actually be spent when it lands.
+ *
+ * An account_id with no matching account entry is kept: the holding is real,
+ * and dropping it because the metadata is missing would lose shares silently.
+ */
 function aggregateHoldings(investments) {
   const byId = new Map();
   for (const s of (investments.securities || [])) {
     byId.set(s.security_id, s);
   }
+
+  const excluded = new Set();
+  const skipped = [];
+  for (const a of (investments.accounts || [])) {
+    const kind = classifyAccount({ category: a.type, type: a.subtype, name: a.name });
+    if (kind !== "spendable") {
+      excluded.add(a.account_id);
+      skipped.push({ name: a.name || a.official_name || "an account", kind });
+    }
+  }
+
   const out = {};
   for (const h of (investments.holdings || [])) {
+    if (excluded.has(h.account_id)) continue;
     const sec = byId.get(h.security_id);
     if (!sec) continue;
     const ticker = (sec.ticker_symbol || "").toUpperCase().trim();
@@ -521,7 +545,7 @@ function aggregateHoldings(investments) {
     if (!Number.isFinite(qty) || qty <= 0) continue;
     out[ticker] = (out[ticker] || 0) + qty;
   }
-  return out;
+  return { holdings: out, skipped };
 }
 
 // Exported for unit testing; the Worker runtime only uses the default export.

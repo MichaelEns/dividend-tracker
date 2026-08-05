@@ -40,6 +40,8 @@
 const SNAPTRADE_HOST = "https://api.snaptrade.com";
 const API_PREFIX = "/api/v1";
 
+import { classifyAccount } from "./accounts.js";
+
 /**
  * Canonical JSON: object keys sorted at every level, no insignificant space.
  *
@@ -213,15 +215,37 @@ async function listAccounts(env) {
  * SnapTrade prints, and a re-worded name must not look like a new institution.
  */
 async function fetchSnaptradeHoldings(env) {
-  const accounts = await listAccounts(env);
-  if (accounts.length === 0) {
+  const all = await listAccounts(env);
+  if (all.length === 0) {
     return { connections: [], holdings: {}, institution: null, accounts: 0, connected: false };
   }
 
-  // Fetched concurrently. One request per account, and a real login can expose
-  // nine or more (401k, IRA, Roth, HSA, cash management, a credit card), which
-  // sequentially took about nine seconds - a long time to hold a button down.
-  const settled = await Promise.all(accounts.map(async (account) => {
+  // Classify before fetching anything. A credit card and a chequing account
+  // have no positions to read, and a retirement account's dividends are not
+  // spendable, so all three are requests worth not making: a real login was 14
+  // accounts, of which 5 are worth reading.
+  const kept = [];
+  const skipped = [];
+  for (const account of all) {
+    const kind = classifyAccount({
+      category: account && account.account_category,
+      type: account && account.raw_type,
+      name: account && account.name,
+    });
+    if (kind === "spendable") kept.push(account);
+    else skipped.push({ name: (account && account.name) || "an account", kind });
+  }
+
+  if (kept.length === 0) {
+    return {
+      connections: [], holdings: {}, institution: null,
+      accounts: all.length, skipped, connected: true,
+    };
+  }
+
+  // Fetched concurrently. One request per account, and sequentially a real
+  // login took about nine seconds - a long time to hold a button down.
+  const settled = await Promise.all(kept.map(async (account) => {
     const id = account && (account.id || account.account_id);
     if (!id) return null;
     const name = (account && (account.institution_name || account.brokerage_authorization_name)) || null;
@@ -237,9 +261,9 @@ async function fetchSnaptradeHoldings(env) {
         const wrapper = await snaptrade(env, "GET", `/accounts/${encodeURIComponent(id)}/holdings`, null);
         positions = (wrapper && wrapper.positions) || [];
       } catch (inner) {
-        // One unreadable account must not fail the whole sync. A credit card or
-        // a plan account that answers neither endpoint would otherwise stop the
-        // brokerage account beside it from reporting at all.
+        // One unreadable account must not fail the whole sync. A plan account
+        // that answers neither endpoint would otherwise stop the brokerage
+        // account beside it from reporting at all.
         return { key, name, positions: [], error: `${name || "An account"}: ${inner.message}` };
       }
     }
@@ -284,9 +308,10 @@ async function fetchSnaptradeHoldings(env) {
   return {
     connections,
     errors,
+    skipped,
     holdings: merged,
     institution,
-    accounts: accounts.length,
+    accounts: kept.length,
     connected: true,
   };
 }
