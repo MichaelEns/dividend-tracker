@@ -287,8 +287,23 @@ test('the balances page asks for the balances scope on both link calls', () => {
   }
 });
 
-test('the public token from Link is exchanged, not discarded', () => {
-  // Plaid Link hands the public token to onSuccess and nothing else. Ignoring
+test('the page does not narrow products when reopening a connection', () => {
+  // Link only offers accounts supporting EVERY product asked for, so narrowing
+  // hides account types rather than revealing them. Asking for `auth` would
+  // exclude credit cards, and a card-only connection - a TD Aeroplan Visa with
+  // no chequing behind it - would then have nothing selectable at all.
+  //
+  // Pinned because narrowing to `auth` is a plausible-sounding fix for "my
+  // chequing account is missing", and it was briefly shipped as exactly that.
+  const js = fs.readFileSync(path.join(__dirname, '..', 'docs', 'balances.js'), 'utf8');
+  const at = js.indexOf("'/link/token/update'");
+  assert.ok(at > 0, 'the update endpoint is never called');
+  const call = js.slice(at, at + 160);
+  assert.ok(!/products:/.test(call),
+    'reopening narrows the products, which hides accounts rather than revealing them');
+});
+
+test('the public token from Link is exchanged, not discarded', () => {  // Plaid Link hands the public token to onSuccess and nothing else. Ignoring
   // it leaves the sign-in looking successful with no connection stored at all,
   // which is silent: the page just shows no accounts afterwards.
   const js = fs.readFileSync(path.join(__dirname, '..', 'docs', 'balances.js'), 'utf8');

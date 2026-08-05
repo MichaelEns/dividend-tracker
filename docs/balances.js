@@ -472,17 +472,17 @@ async function editAccounts() {
       ? state.connections[0].key
       : (state.connections || []).map((c) => c.key)[0];
     const { link_token: linkToken, institution } = await workerPost(
-      // `auth` is the product tied to a bank's branch transit numbers, which is
-      // to say chequing and savings. The original link asked for
-      // `transactions`, and Link only offers accounts supporting every product
-      // asked for - which is why TD showed a credit card and nothing else.
-      '/link/token/update', { key: target, products: ['auth'] }, key,
+      // Deliberately does NOT narrow the products. Link only offers accounts
+      // supporting every product asked for, so narrowing hides account types
+      // rather than revealing them - asking for `auth` would exclude credit
+      // cards, and a card-only connection would have nothing left to select.
+      '/link/token/update', { key: target }, key,
     );
     if (!linkToken) throw new Error('The worker did not return a link_token.');
     await loadPlaidSdk();
     setStatus(
-      `Sign in to ${institution || 'your bank'} and tick your chequing and savings `
-      + 'accounts. This reuses the existing connection, so it costs nothing.', 'ok',
+      `Sign in to ${institution || 'your bank'} and tick any accounts you want `
+      + 'added. This reuses the existing connection, so it costs nothing.', 'ok',
     );
 
     const handler = window.Plaid.create({
