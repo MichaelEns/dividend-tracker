@@ -258,7 +258,33 @@ test('adding accounts reuses the connection instead of spending a slot', async (
     'update mode must pass the existing access token, or it creates a new Item');
 });
 
-test('an update token omits products, which Plaid rejects alongside a token', async () => {
+test('an update may narrow products, which is how hidden accounts surface', async () => {
+  // An earlier version of this test asserted the opposite - that Plaid rejects
+  // products alongside an access_token. Probed against the real production API,
+  // it accepts them, and that matters: Link only offers accounts supporting
+  // every product asked for, so the Item's original product list is often the
+  // reason an account never appeared.
+  const env = seededEnv();
+  const bodies = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return { ok: true, status: 200, async text() { return '{"link_token":"lt"}'; } };
+  };
+  try {
+    await post('/link/token/update', { key: 'ins_42', products: ['auth'] }, env);
+  } finally { globalThis.fetch = original; }
+
+  const body = bodies[0];
+  assert.deepStrictEqual(body.products, ['auth']);
+  assert.ok(body.access_token, 'update mode must still reuse the existing Item');
+  assert.deepStrictEqual(body.update, { account_selection_enabled: true },
+    'without account_selection_enabled the user is never offered the choice');
+});
+
+test('an update with no products asked for sends none at all', async () => {
+  // Sending an empty products array is not the same as omitting the field, and
+  // Plaid rejects the empty one.
   const env = seededEnv();
   const bodies = [];
   const original = globalThis.fetch;
@@ -270,11 +296,25 @@ test('an update token omits products, which Plaid rejects alongside a token', as
     await post('/link/token/update', { key: 'ins_42' }, env);
   } finally { globalThis.fetch = original; }
 
-  const body = bodies[0];
-  assert.ok(!('products' in body),
-    'products alongside access_token is rejected by Plaid outright');
-  assert.deepStrictEqual(body.update, { account_selection_enabled: true },
-    'without account_selection_enabled the user cannot change which accounts are shared');
+  assert.ok(!('products' in bodies[0]), 'an empty products array is rejected by Plaid');
+});
+
+test('an unrecognised product is dropped rather than sent to Plaid', async () => {
+  // The value arrives in a request body. Plaid rejects an unknown product
+  // outright, which on screen looks like the bank refusing the connection.
+  const env = seededEnv();
+  const bodies = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return { ok: true, status: 200, async text() { return '{"link_token":"lt"}'; } };
+  };
+  try {
+    await post('/link/token/update',
+      { key: 'ins_42', products: ['auth', 'not-a-product', 'DROP TABLE'] }, env);
+  } finally { globalThis.fetch = original; }
+
+  assert.deepStrictEqual(bodies[0].products, ['auth']);
 });
 
 test('an update reopens the right connection with its own credentials', async () => {

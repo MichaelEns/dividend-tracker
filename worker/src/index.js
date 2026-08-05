@@ -98,6 +98,13 @@ function linkScope(value) {
   return value === SCOPE_BALANCES ? SCOPE_BALANCES : SCOPE_HOLDINGS;
 }
 
+// Products the page may ask for when reopening a connection. An allow-list
+// because the value arrives in a request body, and an unrecognised product is
+// rejected by Plaid outright - which would look like the bank refusing.
+const ALLOWED_UPDATE_PRODUCTS = new Set([
+  "auth", "transactions", "identity", "liabilities", "investments",
+]);
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
@@ -152,7 +159,9 @@ export default {
       }
       if (url.pathname === "/link/token/update" && request.method === "POST") {
         const body = await safeJson(request);
-        return json(await createUpdateToken(env, body && body.key), 200, cors);
+        return json(
+          await createUpdateToken(env, body && body.key, body && body.products), 200, cors,
+        );
       }
       if (url.pathname === "/link/token/exchange" && request.method === "POST") {
         const body = await safeJson(request);
@@ -420,12 +429,16 @@ async function createLinkToken(env, scope) {
  * Plaid asks which accounts to share during sign-in, and a bank that offered
  * only a credit card leaves the rest invisible with no way back - short of
  * re-linking, which permanently consumes another of the ten Trial slots.
+ * Update mode reuses the Item, so it costs nothing.
  *
- * Update mode reuses the Item, so it costs nothing. `products` must be omitted
- * entirely: Plaid rejects a token that specifies both an access_token and
- * products.
+ * `products` may be narrowed here, and that is the point rather than a detail.
+ * Link only offers accounts supporting every product asked for, so the Item's
+ * original list is often the reason an account never appeared: TD Canada Trust
+ * linked for `transactions` offered a credit card and nothing else, while
+ * `auth` is the product carrying its 1001 branch transit numbers - chequing and
+ * savings. Asking for less, and asking for the right thing, shows more.
  */
-async function createUpdateToken(env, key) {
+async function createUpdateToken(env, key, products) {
   const items = await readItems(env);
   const item = key
     ? items.find((it) => (it.key || connectionKey(it)) === key)
@@ -437,6 +450,10 @@ async function createUpdateToken(env, key) {
   }
   const scope = (item.scope === SCOPE_BALANCES) ? SCOPE_BALANCES : SCOPE_HOLDINGS;
   const balances = scope === SCOPE_BALANCES;
+
+  const wanted = (Array.isArray(products) ? products : [])
+    .map((p) => String(p).trim().toLowerCase())
+    .filter((p) => ALLOWED_UPDATE_PRODUCTS.has(p));
 
   const payload = await plaid(env, "/link/token/create", {
     user: { client_user_id: "divtracker-owner" },
@@ -451,6 +468,9 @@ async function createUpdateToken(env, key) {
     ).split(",").map((s) => s.trim()).filter(Boolean),
     language: "en",
     access_token: item.access_token,
+    ...(wanted.length ? { products: wanted } : {}),
+    // Without this the user is walked through sign-in again and never offered
+    // the account choice, which is the entire reason for reopening.
     update: { account_selection_enabled: true },
   }, plaidCredsFor(env, item));
 
@@ -458,6 +478,7 @@ async function createUpdateToken(env, key) {
     link_token: payload.link_token,
     institution: item.institution || null,
     key: item.key || connectionKey(item),
+    products: wanted,
   };
 }
 
