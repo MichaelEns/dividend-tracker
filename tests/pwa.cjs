@@ -162,6 +162,39 @@ async function main() {
         `${info.touch} -> HTTP ${info.touchStatus}, ${info.touchBytes} bytes`);
     }
 
+    // The two apps share a stylesheet, so their headers must line up. The
+    // balances page originally omitted .topbar-inner, which supplies all the
+    // horizontal padding, and its title sat flush against the screen edge
+    // while the dividend page looked right. Measured rather than asserted on
+    // markup, so any future way of breaking the inset is caught too.
+    console.log('\n--- header layout ---');
+    const insets = {};
+    for (const page of ['index.html', 'balances.html']) {
+      await rpc(ws, id++, 'Page.navigate', { url: base + page });
+      await new Promise((r) => setTimeout(r, 2500));
+      insets[page] = JSON.parse(await evalJs(`(() => {
+        const h1 = document.querySelector('.topbar h1');
+        const meta = document.querySelector('.topbar .meta');
+        return JSON.stringify({
+          h1: h1.getBoundingClientRect().left,
+          meta: meta.getBoundingClientRect().left,
+          body: document.body.getBoundingClientRect().left,
+        });
+      })()`));
+    }
+    for (const page of ['index.html', 'balances.html']) {
+      check(`${page}: the header title is inset from the screen edge`,
+        insets[page].h1 - insets[page].body >= 12,
+        `left inset is only ${insets[page].h1 - insets[page].body}px`);
+    }
+    check('both apps inset their header title identically',
+      insets['index.html'].h1 === insets['balances.html'].h1,
+      `dividends=${insets['index.html'].h1}px balances=${insets['balances.html'].h1}px`);
+    check('the subtitle lines up with the title on both',
+      insets['index.html'].meta === insets['index.html'].h1
+        && insets['balances.html'].meta === insets['balances.html'].h1,
+      JSON.stringify(insets));
+
     // The service worker must serve each app its own page offline. This is the
     // regression that made Balances open to the dividend page.
     console.log('\n--- service worker ---');
