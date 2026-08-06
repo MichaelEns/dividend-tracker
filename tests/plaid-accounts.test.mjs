@@ -14,9 +14,13 @@
  */
 import test from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import worker from '../worker/src/index.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SITE = 'https://example.github.io';
 const PASS = 'correct-horse-battery-staple';
 
@@ -341,6 +345,26 @@ test('asking to update a connection that does not exist says so', async () => {
   const body = await res.json();
   assert.match(body.error, /No connection is stored/);
   assert.strictEqual(stub.calls.length, 0, 'nothing should have been sent to Plaid');
+});
+
+test('the balances app asks for the least it can, not transaction history', () => {
+  // The page only ever calls /accounts/balance/get. `balance` cannot be named
+  // as an initial product - Plaid initialises it automatically - so some other
+  // product has to be, and `transactions` consented to every purchase at the
+  // bank in order to read one number. On an app whose stated pitch is that
+  // nothing leaves the device, asking for data it never reads is the wrong
+  // default even when nothing goes wrong.
+  const toml = fs.readFileSync(
+    path.join(__dirname, '..', 'worker', 'wrangler.toml'), 'utf8',
+  );
+  const m = toml.match(/^PLAID_BALANCE_PRODUCTS\s*=\s*"([^"]+)"/m);
+  assert.ok(m, 'PLAID_BALANCE_PRODUCTS is not configured');
+  const products = m[1].split(',').map((s) => s.trim());
+  assert.ok(!products.includes('transactions'),
+    'the balances app requests transaction history it never reads');
+  assert.ok(!products.includes('auth'),
+    'auth excludes credit cards, which would hide a card-only bank entirely');
+  assert.strictEqual(products.length, 1, 'one product is enough to create the Item');
 });
 
 /* ------------------------------------------------- reading stored tokens */

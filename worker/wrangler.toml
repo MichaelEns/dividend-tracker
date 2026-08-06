@@ -58,7 +58,14 @@ PLAID_COUNTRY_CODES = "US"
 # The balances page links Canadian retail banks, which have no investments
 # product. Asking for one does not merely return less: it hides TD Canada Trust
 # from Link's institution search entirely, so the bank looks unsupported.
-PLAID_BALANCE_PRODUCTS = "transactions"
+#
+# `identity` rather than `transactions` because this page only ever calls
+# /accounts/balance/get. `balance` cannot be named here - Plaid initialises it
+# automatically - so some product must be, and asking for transactions consented
+# to every purchase at the bank in order to read a single number. `identity` is
+# the lightest product supported by chequing, savings AND credit card accounts,
+# so it does not filter any account type out of Link the way `auth` would.
+PLAID_BALANCE_PRODUCTS = "identity"
 PLAID_BALANCE_COUNTRY_CODES = "CA"
 PLAID_CLIENT_NAME = "Dividend Tracker"
 # Shown on the bank's own consent screen while the user decides whether to hand
