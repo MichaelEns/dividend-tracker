@@ -391,6 +391,59 @@ function loadPlaidSdk() {
 }
 
 /**
+ * Where Plaid Link was when it closed, in plain English.
+ *
+ * Link reports the step as a machine token; naming it is the difference
+ * between "it didn't work" and knowing the code was the part that failed.
+ */
+const LINK_STEPS = {
+  requires_credentials: 'entering your username and password',
+  requires_code: 'entering the verification code',
+  choose_device: 'choosing where the code was sent',
+  requires_questions: 'answering the security questions',
+  requires_selections: 'answering the security questions',
+  requires_account_selection: 'choosing which accounts to share',
+  requires_oauth: 'signing in at the bank',
+  institution_not_found: 'searching for the bank',
+};
+
+/**
+ * Turn a Plaid Link exit into something a person can act on.
+ *
+ * The useful parts are split across both arguments, and the original handler
+ * used only the first: the error says what went wrong, `metadata.status` says
+ * how far the flow got, and `metadata.request_id` is the one thing Plaid
+ * support asks for. Dropping the last two made "the bank refused the code"
+ * indistinguishable from "you changed your mind".
+ *
+ * Always states that nothing was consumed. A sign-in that never completes
+ * creates no Item, so it costs none of the ten a free Plaid account ever gets,
+ * and being unsure of that is its own reason not to try again.
+ */
+function describeLinkExit(err, metadata) {
+  const meta = metadata || {};
+  const bank = (meta.institution && meta.institution.name) || 'The bank';
+  const step = LINK_STEPS[meta.status];
+  const safe = 'Nothing was linked, and no bank connection was used up.';
+
+  if (!err) {
+    return {
+      level: 'ok',
+      text: step
+        ? `Sign-in stopped at ${step}. ${safe}`
+        : `Bank sign-in cancelled. ${safe}`,
+    };
+  }
+
+  // display_message is Plaid's own wording for the end user, and the only one
+  // of the three written to be read; the codes are for us.
+  const why = err.display_message || err.error_message || err.error_code || 'it did not complete';
+  const where = step ? ` It stopped at ${step}.` : '';
+  const ref = meta.request_id ? ` Plaid reference ${meta.request_id}.` : '';
+  return { level: 'error', text: `${bank}: ${why}${where} ${safe}${ref}` };
+}
+
+/**
  * Link another bank.
  *
  * Always opens Plaid Link rather than short-circuiting to a refresh, because
@@ -435,10 +488,10 @@ async function linkBank() {
           if (button) { button.disabled = false; button.textContent = original; }
         }
       },
-      onExit: (err) => {
+      onExit: (err, metadata) => {
         if (button) { button.disabled = false; button.textContent = original; }
-        if (err) setStatus('Bank sign-in cancelled or errored: ' + (err.error_message || err.error_code || 'exited'), 'error');
-        else setStatus('Bank sign-in cancelled.', 'ok');
+        const exit = describeLinkExit(err, metadata);
+        setStatus(exit.text, exit.level);
       },
       onEvent: () => {},
     });
@@ -500,10 +553,10 @@ async function editAccounts() {
           if (button) { button.disabled = false; button.textContent = original; }
         }
       },
-      onExit: (err) => {
+      onExit: (err, metadata) => {
         if (button) { button.disabled = false; button.textContent = original; }
-        if (err) setStatus('Cancelled or errored: ' + (err.error_message || err.error_code || 'exited'), 'error');
-        else setStatus('No changes made.', 'ok');
+        const exit = describeLinkExit(err, metadata);
+        setStatus(err ? exit.text : 'No changes made.', exit.level);
       },
       onEvent: () => {},
     });
@@ -642,6 +695,7 @@ if (typeof module !== 'undefined' && module.exports) {
     totalByCurrency,
     formatTotals,
     formatOwed,
+    describeLinkExit,
     describeAge,
     money,
     GROUPS,

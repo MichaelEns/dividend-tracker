@@ -25,7 +25,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const {
   normalizePassphrase, groupOf, totalByCurrency, formatTotals, formatOwed,
-  describeAge, money, GROUPS,
+  describeAge, describeLinkExit, money, GROUPS,
 } = require('../docs/balances.js');
 
 /* ------------------------------------------------------------- grouping */
@@ -225,8 +225,97 @@ test('never having synced says so, rather than showing an age of zero', () => {
   assert.strictEqual(describeAge(undefined), 'never');
 });
 
-/* ----------------------------------------------------------------- money */
+/* ------------------------------------------------------- link diagnostics */
 
+test('a failed sign-in says which step it died at', () => {
+  // Every Canadian bank in Plaid is DEGRADED, and the verification code is the
+  // step that fails. "Cancelled or errored" gave no way to tell that apart
+  // from a wrong password.
+  const out = describeLinkExit(
+    { error_code: 'INVALID_MFA', display_message: 'The code was incorrect.' },
+    { status: 'requires_code', institution: { name: 'RBC Royal Bank' }, request_id: 'req_abc123' },
+  );
+  assert.strictEqual(out.level, 'error');
+  assert.match(out.text, /RBC Royal Bank/);
+  assert.match(out.text, /The code was incorrect/);
+  assert.match(out.text, /verification code/, 'should name the step it stopped at');
+});
+
+test('a failure carries the reference Plaid support asks for', () => {
+  const out = describeLinkExit({ error_code: 'X' }, { request_id: 'req_xyz789' });
+  assert.match(out.text, /req_xyz789/,
+    'without the request_id a failure cannot be reported to Plaid at all');
+});
+
+test('every failure says no connection was consumed', () => {
+  // The user has ten for the lifetime of the account. Not knowing whether a
+  // failure cost one is itself a reason not to retry.
+  for (const [err, meta] of [
+    [{ error_code: 'INVALID_MFA' }, { status: 'requires_code' }],
+    [{ error_code: 'INSTITUTION_DOWN' }, {}],
+    [null, { status: 'requires_code' }],
+    [null, {}],
+  ]) {
+    assert.match(describeLinkExit(err, meta).text, /no bank connection was used up/i);
+  }
+});
+
+test('Plaid\u2019s own wording is preferred over its error codes', () => {
+  const out = describeLinkExit(
+    { error_code: 'ITEM_LOCKED', error_message: 'item is locked', display_message: 'Your account is locked. Call your bank.' },
+    {},
+  );
+  assert.match(out.text, /Your account is locked/);
+  assert.ok(!/ITEM_LOCKED/.test(out.text), 'an error code is not an explanation');
+});
+
+test('a code is still shown when Plaid offers no readable message', () => {
+  const out = describeLinkExit({ error_code: 'INSTITUTION_NO_LONGER_SUPPORTED' }, {});
+  assert.match(out.text, /INSTITUTION_NO_LONGER_SUPPORTED/);
+});
+
+test('a deliberate cancel is not reported as an error', () => {
+  const out = describeLinkExit(null, {});
+  assert.strictEqual(out.level, 'ok');
+  assert.match(out.text, /cancelled/i);
+});
+
+test('leaving part-way through is reported without crying wolf', () => {
+  // No error object, but Link still says where the user was. Worth naming, and
+  // not worth colouring red.
+  const out = describeLinkExit(null, { status: 'requires_code' });
+  assert.strictEqual(out.level, 'ok');
+  assert.match(out.text, /verification code/);
+});
+
+test('an unknown step never leaks a raw machine token to the screen', () => {
+  const out = describeLinkExit({ error_code: 'X' }, { status: 'requires_something_new' });
+  assert.ok(!/requires_something_new/.test(out.text), out.text);
+});
+
+test('a missing metadata object does not throw', () => {
+  // onExit is called by Plaid's SDK, so the shape is not ours to guarantee.
+  for (const args of [[null, null], [null, undefined], [{ error_code: 'X' }, null], [undefined, undefined]]) {
+    assert.doesNotThrow(() => describeLinkExit(...args));
+    assert.ok(describeLinkExit(...args).text.length > 0);
+  }
+});
+
+test('both Link handlers pass the metadata through, not just the error', () => {
+  // describeLinkExit being right is worth nothing if onExit drops the argument
+  // carrying the step and the request id, which is exactly what it used to do.
+  const js = fs.readFileSync(path.join(__dirname, '..', 'docs', 'balances.js'), 'utf8');
+  const handlers = [...js.matchAll(/onExit:\s*\(([^)]*)\)\s*=>/g)];
+  assert.strictEqual(handlers.length, 2, `expected two onExit handlers, found ${handlers.length}`);
+  for (const h of handlers) {
+    assert.match(h[1], /,/, `onExit(${h[1]}) ignores Link's metadata`);
+    const body = js.slice(h.index, h.index + 320);
+    assert.match(body, /describeLinkExit\(\s*err\s*,\s*metadata\s*\)/,
+      'the handler does not describe the exit from both arguments');
+  }
+});
+
+/* ----------------------------------------------------------------- money */
 test('an amount is shown to the cent', () => {
   assert.ok(/1,234\.50/.test(money(1234.5, 'CAD')), money(1234.5, 'CAD'));
   assert.ok(/0\.00/.test(money(0, 'CAD')), money(0, 'CAD'));
