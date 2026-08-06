@@ -31,6 +31,10 @@ const state = {
   errors: [],
   connections: [],
   refreshing: false,
+  // True while Plaid Link is open. Reading a texted verification code means
+  // leaving the app, so a bank that uses SMS guarantees a visibilitychange on
+  // the way back - the one moment the page must sit still and do nothing.
+  linking: false,
 };
 
 /* ------------------------------------------------------------- utilities */
@@ -471,6 +475,9 @@ async function linkBank() {
     const handler = window.Plaid.create({
       token: linkToken,
       onSuccess: async (publicToken) => {
+        // Cleared before the reads below, which are ordinary page work and
+        // should not leave auto-refresh switched off if one of them throws.
+        state.linking = false;
         try {
           // Link hands back a short-lived public token and nothing else. It has
           // to be exchanged for the long-lived one the worker stores, or the
@@ -489,14 +496,17 @@ async function linkBank() {
         }
       },
       onExit: (err, metadata) => {
+        state.linking = false;
         if (button) { button.disabled = false; button.textContent = original; }
         const exit = describeLinkExit(err, metadata);
         setStatus(exit.text, exit.level);
       },
       onEvent: () => {},
     });
+    state.linking = true;
     handler.open();
   } catch (err) {
+    state.linking = false;
     setStatus('Could not start bank sign-in: ' + err.message, 'error');
     if (button) { button.disabled = false; button.textContent = original; }
   }
@@ -543,6 +553,7 @@ async function editAccounts() {
       // Update mode reuses the Item, so there is no public token to exchange
       // and nothing new to store - only the account list has changed.
       onSuccess: async () => {
+        state.linking = false;
         try {
           setStatus('Accounts updated. Reading balances…', 'ok');
           await refreshBalances();
@@ -554,14 +565,17 @@ async function editAccounts() {
         }
       },
       onExit: (err, metadata) => {
+        state.linking = false;
         if (button) { button.disabled = false; button.textContent = original; }
         const exit = describeLinkExit(err, metadata);
         setStatus(err ? exit.text : 'No changes made.', exit.level);
       },
       onEvent: () => {},
     });
+    state.linking = true;
     handler.open();
   } catch (err) {
+    state.linking = false;
     setStatus('Could not reopen the bank: ' + err.message, 'error');
     if (button) { button.disabled = false; button.textContent = original; }
   }
@@ -600,6 +614,9 @@ function setupPullToRefresh() {
   window.addEventListener('touchstart', (event) => {
     if (event.touches.length !== 1) return;
     if (window.scrollY > 0) return;
+    // These listeners are on window and call preventDefault, so they must stand
+    // down entirely while Plaid Link is over the page.
+    if (state.linking) return;
     startY = event.touches[0].clientY;
     startX = event.touches[0].clientX;
     pulling = false;
@@ -607,7 +624,7 @@ function setupPullToRefresh() {
   }, { passive: true });
 
   window.addEventListener('touchmove', (event) => {
-    if (startY === null) return;
+    if (startY === null || state.linking) return;
     const dy = event.touches[0].clientY - startY;
     const dx = event.touches[0].clientX - startX;
     if (!decided) {
@@ -669,6 +686,11 @@ async function init() {
   // share count, it changes whenever money moves, and one request is cheap.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
+    // Not while signing in. A texted code has to be read somewhere else, so
+    // this fires on the way back from Messages every single time - refreshing
+    // underneath a half-finished sign-in at best rewrites the status message
+    // telling the user what to do, and at worst disturbs the flow itself.
+    if (state.linking) return;
     renderMeta();
     refreshBalances({ quiet: true });
   });
