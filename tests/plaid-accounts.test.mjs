@@ -347,24 +347,82 @@ test('asking to update a connection that does not exist says so', async () => {
   assert.strictEqual(stub.calls.length, 0, 'nothing should have been sent to Plaid');
 });
 
-test('the balances app asks for the least it can, not transaction history', () => {
-  // The page only ever calls /accounts/balance/get. `balance` cannot be named
-  // as an initial product - Plaid initialises it automatically - so some other
-  // product has to be, and `transactions` consented to every purchase at the
-  // bank in order to read one number. On an app whose stated pitch is that
-  // nothing leaves the device, asking for data it never reads is the wrong
-  // default even when nothing goes wrong.
+test('nothing in products can filter an account type out of Link', () => {
+  // Link only offers accounts supporting EVERY product in `products`, so this
+  // list is an account filter as much as a data request. `auth` is depository
+  // only and `liabilities` is credit only: either one silently hides half the
+  // accounts at a bank. Anything narrower than universal belongs in
+  // optional_products, which initialises where supported and filters nothing.
   const toml = fs.readFileSync(
     path.join(__dirname, '..', 'worker', 'wrangler.toml'), 'utf8',
   );
-  const m = toml.match(/^PLAID_BALANCE_PRODUCTS\s*=\s*"([^"]+)"/m);
-  assert.ok(m, 'PLAID_BALANCE_PRODUCTS is not configured');
-  const products = m[1].split(',').map((s) => s.trim());
-  assert.ok(!products.includes('transactions'),
-    'the balances app requests transaction history it never reads');
-  assert.ok(!products.includes('auth'),
-    'auth excludes credit cards, which would hide a card-only bank entirely');
-  assert.strictEqual(products.length, 1, 'one product is enough to create the Item');
+  const FILTERS = ['auth', 'liabilities', 'investments', 'assets'];
+  const required = toml.match(/^PLAID_BALANCE_PRODUCTS\s*=\s*"([^"]+)"/m);
+  assert.ok(required, 'PLAID_BALANCE_PRODUCTS is not configured');
+  for (const p of required[1].split(',').map((s) => s.trim())) {
+    assert.ok(!FILTERS.includes(p),
+      `${p} in PLAID_BALANCE_PRODUCTS hides every account type that lacks it`);
+  }
+});
+
+test('transaction history is requested at link time, while it is still free', () => {
+  // Only /accounts/balance/get is called today, but a product cannot be added
+  // to an existing Item without sending the user back through Link and its
+  // MFA - which already fails at two of the four banks here. Consent asked for
+  // at link time costs nothing; consent asked for later may be unobtainable.
+  const toml = fs.readFileSync(
+    path.join(__dirname, '..', 'worker', 'wrangler.toml'), 'utf8',
+  );
+  const required = toml.match(/^PLAID_BALANCE_PRODUCTS\s*=\s*"([^"]+)"/m)[1];
+  assert.match(required, /transactions/,
+    'dropping transactions forecloses v2 behind a sign-in that may not succeed again');
+});
+
+test('credit card terms are asked for optionally, not as a filter', () => {
+  const toml = fs.readFileSync(
+    path.join(__dirname, '..', 'worker', 'wrangler.toml'), 'utf8',
+  );
+  const optional = toml.match(/^PLAID_BALANCE_OPTIONAL_PRODUCTS\s*=\s*"([^"]+)"/m);
+  assert.ok(optional, 'PLAID_BALANCE_OPTIONAL_PRODUCTS is not configured');
+  assert.match(optional[1], /liabilities/,
+    'a card balance without its due date or minimum payment is half the story');
+  assert.ok(!/assets/.test(optional[1]),
+    'Plaid rejects assets in optional_products outright');
+});
+
+test('optional products reach Plaid without narrowing the account picker', async () => {
+  const env = makeEnv({
+    PLAID_BALANCE_PRODUCTS: 'transactions',
+    PLAID_BALANCE_OPTIONAL_PRODUCTS: 'liabilities',
+  });
+  const bodies = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return { ok: true, status: 200, async text() { return '{"link_token":"lt"}'; } };
+  };
+  try {
+    await post('/link/token/create', { scope: 'balances' }, env);
+  } finally { globalThis.fetch = original; }
+
+  assert.deepStrictEqual(bodies[0].products, ['transactions']);
+  assert.deepStrictEqual(bodies[0].optional_products, ['liabilities']);
+});
+
+test('no optional products means the field is omitted, not sent empty', async () => {
+  // Plaid rejects an empty optional_products array.
+  const env = makeEnv({ PLAID_BALANCE_OPTIONAL_PRODUCTS: '' });
+  const bodies = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return { ok: true, status: 200, async text() { return '{"link_token":"lt"}'; } };
+  };
+  try {
+    await post('/link/token/create', { scope: 'balances' }, env);
+  } finally { globalThis.fetch = original; }
+
+  assert.ok(!('optional_products' in bodies[0]));
 });
 
 /* ------------------------------------------------- reading stored tokens */

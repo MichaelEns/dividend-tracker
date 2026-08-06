@@ -406,6 +406,17 @@ async function createLinkToken(env, scope) {
       : (env.PLAID_COUNTRY_CODES || "US")
   ).split(",").map((s) => s.trim()).filter(Boolean);
 
+  // Initialised where supported and ignored where not, and crucially WITHOUT
+  // narrowing the account picker the way `products` does. This is where a
+  // product that only some account types support belongs: `liabilities` names
+  // a card's due date and minimum payment, but naming it above would hide
+  // every chequing account from Link.
+  const optionalProducts = (
+    balances
+      ? (env.PLAID_BALANCE_OPTIONAL_PRODUCTS || "")
+      : (env.PLAID_OPTIONAL_PRODUCTS || "")
+  ).split(",").map((s) => s.trim()).filter(Boolean);
+
   const payload = await plaid(env, "/link/token/create", {
     user: { client_user_id: clientUserId },
     // Shown on the bank's own consent screen. "Dividend Tracker" asking for a
@@ -416,6 +427,8 @@ async function createLinkToken(env, scope) {
       || env.PLAID_CLIENT_NAME
       || "Dividend Tracker",
     products,
+    // Omitted rather than sent empty: Plaid rejects an empty array here.
+    ...(optionalProducts.length ? { optional_products: optionalProducts } : {}),
     country_codes: countryCodes,
     language: "en",
   }, scope);

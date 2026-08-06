@@ -59,13 +59,23 @@ PLAID_COUNTRY_CODES = "US"
 # product. Asking for one does not merely return less: it hides TD Canada Trust
 # from Link's institution search entirely, so the bank looks unsupported.
 #
-# `identity` rather than `transactions` because this page only ever calls
-# /accounts/balance/get. `balance` cannot be named here - Plaid initialises it
-# automatically - so some product must be, and asking for transactions consented
-# to every purchase at the bank in order to read a single number. `identity` is
-# the lightest product supported by chequing, savings AND credit card accounts,
-# so it does not filter any account type out of Link the way `auth` would.
-PLAID_BALANCE_PRODUCTS = "identity"
+# `transactions` rather than the bare minimum, deliberately. Only /accounts/
+# balance/get is called today, but a product cannot be added to an existing Item
+# without sending the user back through Link and its MFA - the step that already
+# fails at two of the four banks here. Consent asked for at link time is free;
+# consent asked for later may be unobtainable.
+#
+# Whatever goes in this list FILTERS Link's account picker: only accounts
+# supporting every named product are offered. So it may contain only products
+# that every account type supports. Anything narrower belongs below.
+PLAID_BALANCE_PRODUCTS = "transactions"
+#
+# Initialised where the institution and account support it, and ignored where
+# they do not, WITHOUT filtering the account picker. `liabilities` is credit-only
+# - naming it above would hide every chequing account - and it carries the
+# statement due date, minimum payment and APR, which is the missing half of a
+# credit card balance. `assets` is rejected here by Plaid outright.
+PLAID_BALANCE_OPTIONAL_PRODUCTS = "liabilities"
 PLAID_BALANCE_COUNTRY_CODES = "CA"
 PLAID_CLIENT_NAME = "Dividend Tracker"
 # Shown on the bank's own consent screen while the user decides whether to hand
