@@ -108,7 +108,36 @@ const HARNESS = `
     if (p.endsWith('/status')) {
       return reply({ connected: true, connections: [{ key: 'ins_39', institution: 'RBC Royal Bank' }] });
     }
-    if (p.endsWith('/balances')) return reply({ connected: true, institutions: [], errors: [] });
+    if (p.endsWith('/balances')) {
+      // A reading where one bank is fine and one is broken - the scenario the
+      // page has to make obvious rather than quietly absorb.
+      if (window.__brokenBank) {
+        return reply({
+          connected: true,
+          partial: true,
+          errors: ['RBC Royal Bank: login required'],
+          institutions: [
+            { key: 'ins_42', institution: 'TD Canada Trust', readAt: new Date().toISOString(),
+              accounts: [{ id: 'a', name: 'Chequing', shortName: 'Chequing', type: 'depository',
+                subtype: 'chequing', current: 1200, available: 1200, currency: 'CAD' }] },
+            { key: 'ins_39', institution: 'RBC Royal Bank', readAt: null, accounts: [],
+              error: 'RBC Royal Bank: login required', errorCode: 'ITEM_LOGIN_REQUIRED' },
+          ],
+        });
+      }
+      return reply({
+        connected: true,
+        institutions: [
+          { key: 'ins_42', institution: 'TD Canada Trust', readAt: new Date().toISOString(),
+            accounts: [{ id: 'a', name: 'Chequing', shortName: 'Chequing', type: 'depository',
+              subtype: 'chequing', current: 1200, available: 1200, currency: 'CAD' }] },
+          { key: 'ins_39', institution: 'RBC Royal Bank', readAt: new Date().toISOString(),
+            accounts: [{ id: 'b', name: 'Savings', shortName: 'Savings', type: 'depository',
+              subtype: 'savings', current: 800, available: 800, currency: 'CAD' }] },
+        ],
+        errors: [],
+      });
+    }
     if (p.endsWith('/link/token/create') || p.endsWith('/link/token/update')) {
       return reply({ link_token: 'link-sandbox-test', institution: 'RBC Royal Bank', key: 'ins_39' });
     }
@@ -225,6 +254,55 @@ async function main() {
     check('auto-refresh resumes after a successful link too',
       doneCalls.some((p) => p.endsWith('/balances')),
       'calls: ' + JSON.stringify(doneCalls));
+
+    // A bank that cannot be read must be impossible to miss. This is the
+    // failure the whole page has to get right: someone deciding what they can
+    // spend, looking at a total that quietly lost a bank.
+    console.log('\n--- a bank that could not be read ---');
+    await evalJs('window.__brokenBank = true; 1');
+    await evalJs(`document.dispatchEvent(new Event('visibilitychange')); 1`);
+    await new Promise((r) => setTimeout(r, 1200));
+
+    const view = JSON.parse(await evalJs(`JSON.stringify({
+      meta: document.getElementById('meta').textContent,
+      status: document.getElementById('sync-status').textContent,
+      statusShown: !document.getElementById('sync-status').hidden,
+      body: document.getElementById('balances-body').innerText,
+      unreadableBlocks: document.querySelectorAll('.bal-unreadable').length,
+      netSub: [...document.querySelectorAll('#summary-cards .card')]
+        .map(c => c.innerText.replace(/\\n/g, ' | ')).join(' || '),
+      netFlagged: document.querySelectorAll('#summary-cards .card.incomplete').length,
+    })`));
+
+    check('the broken bank is still on the page, not silently dropped',
+      view.unreadableBlocks === 1 && /RBC Royal Bank/.test(view.body),
+      'body: ' + JSON.stringify(view.body));
+    check('it says what to do about it, in plain words',
+      /reconnected/i.test(view.body) && !/ITEM_LOGIN_REQUIRED/.test(view.body),
+      'body: ' + JSON.stringify(view.body));
+    check('the header stops claiming every bank was read',
+      /could not be read/i.test(view.meta) && /1 institution/.test(view.meta),
+      'meta: ' + JSON.stringify(view.meta));
+    check('the Net total is marked incomplete',
+      view.netFlagged === 1 && /does NOT include/i.test(view.netSub),
+      'cards: ' + view.netSub);
+    check('the warning shows without anyone pressing refresh',
+      view.statusShown && /RBC Royal Bank/.test(view.status),
+      'status: ' + JSON.stringify(view.status));
+
+    // And it must clear itself once the bank is readable again.
+    await evalJs('window.__brokenBank = false; 1');
+    await evalJs(`document.dispatchEvent(new Event('visibilitychange')); 1`);
+    await new Promise((r) => setTimeout(r, 1200));
+    const cleared = JSON.parse(await evalJs(`JSON.stringify({
+      unreadableBlocks: document.querySelectorAll('.bal-unreadable').length,
+      netFlagged: document.querySelectorAll('#summary-cards .card.incomplete').length,
+      meta: document.getElementById('meta').textContent,
+    })`));
+    check('the warning clears once the bank can be read again',
+      cleared.unreadableBlocks === 0 && cleared.netFlagged === 0
+        && !/could not be read/i.test(cleared.meta),
+      JSON.stringify(cleared));
 
     console.log(fails === 0 ? '\nLINK GUARD VERIFIED' : `\n${fails} CHECK(S) FAILED`);
   } finally {

@@ -618,6 +618,14 @@ tfoot td { font-weight: 650; border-top: 2px solid var(--border); }
   display: block; font-size: .74rem; font-weight: 400; color: var(--muted);
 }
 
+/* A bank that could not be read. Deliberately loud: the failure mode this
+ * guards against is someone reading a total that quietly lost a bank. */
+.bal-unreadable .bal-inst-name { color: var(--bad); border-bottom-color: var(--bad); }
+.bal-unreadable .bal-inst-total { font-weight: 400; font-size: .8rem; text-transform: uppercase; }
+.bal-problem { margin: 8px 0 0; font-size: .85rem; color: var(--bad); }
+.card.incomplete { border-color: var(--bad); }
+.card.incomplete .sub { color: var(--bad); }
+
 @media (max-width: 560px) {
   .bal-inst-name { font-size: .95rem; }
   .bal-row { padding: 8px 0; }

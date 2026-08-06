@@ -163,6 +163,39 @@ function formatOwed(totals) {
 
 /* --------------------------------------------------------------- rendering */
 
+/**
+ * Why a bank could not be read, in words the person looking at it can act on.
+ *
+ * The audience is whoever opens the app, not whoever built it. "ITEM_LOGIN_
+ * REQUIRED" tells them nothing; "needs to be reconnected" tells them the one
+ * thing they can do about it. Anything unrecognised falls back to saying it
+ * could not be read, which is at least true and never misleading.
+ */
+const CONNECTION_PROBLEMS = {
+  ITEM_LOGIN_REQUIRED: 'needs to be reconnected \u2014 its sign-in has expired',
+  ITEM_LOCKED: 'is locked at the bank \u2014 sign in on the bank\u2019s own site first',
+  INVALID_CREDENTIALS: 'needs to be reconnected \u2014 the saved sign-in no longer works',
+  INVALID_MFA: 'needs to be reconnected \u2014 the bank asked for a new code',
+  PENDING_EXPIRATION: 'needs to be reconnected soon',
+  USER_PERMISSION_REVOKED: 'was disconnected at the bank',
+  USER_ACCOUNT_REVOKED: 'was disconnected at the bank',
+  INSTITUTION_DOWN: 'is temporarily unavailable at the bank\u2019s end',
+  INSTITUTION_NOT_RESPONDING: 'is not responding \u2014 usually temporary',
+  INSTITUTION_NO_LONGER_SUPPORTED: 'can no longer be read by this app',
+  RATE_LIMIT_EXCEEDED: 'was read too often \u2014 try again in a few minutes',
+};
+
+function describeConnectionProblem(institution) {
+  const name = (institution && institution.institution) || 'A bank';
+  const code = institution && institution.errorCode;
+  return `${name} ${(code && CONNECTION_PROBLEMS[code]) || 'could not be read just now'}.`;
+}
+
+/** The banks in this reading that could not be read at all. */
+function unreadable(institutions) {
+  return (institutions || []).filter((i) => i && i.error);
+}
+
 function setStatus(message, kind) {
   const el = document.getElementById('sync-status');
   if (!el) return;
@@ -180,9 +213,13 @@ function renderMeta() {
   }
   const age = Date.now() - Date.parse(state.readAt);
   const level = age >= ANCIENT_AFTER_MS ? 'ancient' : age >= STALE_AFTER_MS ? 'stale' : 'fresh';
-  const count = state.institutions.length;
-  el.textContent = `${count} institution${count === 1 ? '' : 's'} — read ${describeAge(age)}`;
-  el.className = 'meta ' + level;
+  const broken = unreadable(state.institutions);
+  const count = state.institutions.length - broken.length;
+  // A bank that failed must not be counted among the ones that were read, or
+  // the header claims a reading it did not get.
+  el.textContent = `${count} institution${count === 1 ? '' : 's'} — read ${describeAge(age)}`
+    + (broken.length ? ` · ${broken.length} could not be read` : '');
+  el.className = 'meta ' + (broken.length ? 'ancient' : level);
 }
 
 function renderSummary() {
@@ -209,6 +246,7 @@ function renderSummary() {
   if (investments.length) cards.push({ label: 'Investments', accounts: investments });
 
   const net = totalByCurrency(all);
+  const broken = unreadable(state.institutions);
   box.innerHTML = cards.filter((c) => c.accounts.length).map((c) => `
     <div class="card">
       <div class="label">${escapeHtml(c.label)}</div>
@@ -217,10 +255,15 @@ function renderSummary() {
       )}</div>
       <div class="sub">${c.accounts.length} account${c.accounts.length === 1 ? '' : 's'}</div>
     </div>`).join('') + `
-    <div class="card">
+    <div class="card${broken.length ? ' incomplete' : ''}">
       <div class="label">Net</div>
       <div class="value">${escapeHtml(formatTotals(net))}</div>
-      <div class="sub">everything owed subtracted</div>
+      <div class="sub">${broken.length
+        // Presenting a smaller number as the total is the failure that matters:
+        // it is wrong in the direction that makes someone think they have less
+        // room than they do, or more.
+        ? `does NOT include ${broken.length} bank${broken.length === 1 ? '' : 's'} that could not be read`
+        : 'everything owed subtracted'}</div>
     </div>`;
 }
 
@@ -231,6 +274,10 @@ function renderBalances() {
   if (!panel || !body) return;
 
   if (state.institutions.length === 0) {
+    // Cleared, not just hidden: leaving the markup in place keeps a bank that
+    // has since been disconnected sitting in the DOM, ready to reappear the
+    // next time the panel is shown for some unrelated reason.
+    body.innerHTML = '';
     panel.hidden = true;
     if (empty) empty.hidden = !WORKER_BASE;
     return;
@@ -239,6 +286,18 @@ function renderBalances() {
   if (empty) empty.hidden = true;
 
   body.innerHTML = state.institutions.map((inst) => {
+    // A bank that could not be read renders as a problem, not as an absence.
+    // Dropping it made a broken connection look identical to a bank with no
+    // accounts: it left the totals quietly, and nothing on the page said so.
+    if (inst.error) {
+      return `<section class="bal-institution bal-unreadable">
+        <h3 class="bal-inst-name">${escapeHtml(inst.institution || 'Bank')}
+          <span class="bal-inst-total">not read</span>
+        </h3>
+        <p class="bal-problem">${escapeHtml(describeConnectionProblem(inst))}</p>
+      </section>`;
+    }
+
     const accounts = inst.accounts || [];
     const groups = GROUPS
       .map((g) => ({ ...g, rows: accounts.filter((a) => groupOf(a) === g.id) }))
@@ -364,11 +423,15 @@ async function refreshBalances(options) {
       return false;
     }
     commit(payload);
-    if (!quiet) {
+    const broken = unreadable(state.institutions);
+    if (broken.length) {
+      // Shown even on a quiet refresh. Auto-refresh is the only kind most
+      // people ever trigger, so suppressing this as "noise" meant a bank could
+      // drop out of the totals and never once say so.
+      setStatus(broken.map(describeConnectionProblem).join(' '), 'error');
+    } else if (!quiet) {
       const n = state.institutions.reduce((sum, i) => sum + (i.accounts || []).length, 0);
-      setStatus(`Read ${n} account(s) from ${state.institutions.length} institution(s).`
-        + (state.errors.length ? ' ' + state.errors.join('; ') : ''),
-        state.errors.length ? 'error' : 'ok');
+      setStatus(`Read ${n} account(s) from ${state.institutions.length} institution(s).`, 'ok');
     }
     return true;
   } catch (err) {
@@ -718,6 +781,8 @@ if (typeof module !== 'undefined' && module.exports) {
     formatTotals,
     formatOwed,
     describeLinkExit,
+    describeConnectionProblem,
+    unreadable,
     describeAge,
     money,
     GROUPS,

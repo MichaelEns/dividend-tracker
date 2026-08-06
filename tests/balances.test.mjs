@@ -25,7 +25,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const {
   normalizePassphrase, groupOf, totalByCurrency, formatTotals, formatOwed,
-  describeAge, describeLinkExit, money, GROUPS,
+  describeAge, describeLinkExit, describeConnectionProblem, unreadable, money, GROUPS,
 } = require('../docs/balances.js');
 
 /* ------------------------------------------------------------- grouping */
@@ -313,6 +313,81 @@ test('both Link handlers pass the metadata through, not just the error', () => {
     assert.match(body, /describeLinkExit\(\s*err\s*,\s*metadata\s*\)/,
       'the handler does not describe the exit from both arguments');
   }
+});
+
+/* ------------------------------------------------- unreadable connections */
+
+test('a bank that failed is not counted among the ones that were read', () => {
+  const institutions = [
+    { institution: 'TD Canada Trust', accounts: [{ current: 100, currency: 'CAD' }] },
+    { institution: 'RBC Royal Bank', accounts: [], error: 'RBC: boom', errorCode: 'ITEM_LOGIN_REQUIRED' },
+  ];
+  assert.strictEqual(unreadable(institutions).length, 1);
+  assert.strictEqual(unreadable(institutions)[0].institution, 'RBC Royal Bank');
+});
+
+test('a healthy reading reports nothing unreadable', () => {
+  assert.deepStrictEqual(unreadable([{ institution: 'TD', accounts: [] }]), []);
+  assert.deepStrictEqual(unreadable([]), []);
+  assert.deepStrictEqual(unreadable(null), []);
+});
+
+test('a broken connection is explained in words, not error codes', () => {
+  // The person reading this is whoever opens the app, not whoever built it.
+  const text = describeConnectionProblem({
+    institution: 'RBC Royal Bank', error: 'x', errorCode: 'ITEM_LOGIN_REQUIRED',
+  });
+  assert.match(text, /RBC Royal Bank/);
+  assert.match(text, /reconnected/i);
+  assert.ok(!/ITEM_LOGIN_REQUIRED/.test(text), `leaked an error code: ${text}`);
+});
+
+test('every known problem reads as a sentence with no jargon', () => {
+  const codes = [
+    'ITEM_LOGIN_REQUIRED', 'ITEM_LOCKED', 'INVALID_CREDENTIALS', 'INVALID_MFA',
+    'PENDING_EXPIRATION', 'USER_PERMISSION_REVOKED', 'INSTITUTION_DOWN',
+    'INSTITUTION_NOT_RESPONDING', 'INSTITUTION_NO_LONGER_SUPPORTED',
+    'RATE_LIMIT_EXCEEDED',
+  ];
+  for (const code of codes) {
+    const text = describeConnectionProblem({ institution: 'A Bank', errorCode: code });
+    assert.ok(!/_/.test(text), `${code} leaked into the sentence: ${text}`);
+    assert.match(text, /^A Bank .+\.$/, `${code} did not read as a sentence: ${text}`);
+  }
+});
+
+test('an unknown problem still says something true rather than nothing', () => {
+  const text = describeConnectionProblem({ institution: 'A Bank', errorCode: 'SOMETHING_NEW' });
+  assert.ok(!/SOMETHING_NEW/.test(text), text);
+  assert.match(text, /could not be read/i);
+});
+
+test('a nameless connection still produces a usable sentence', () => {
+  assert.match(describeConnectionProblem({}), /^A bank .+\.$/);
+  assert.match(describeConnectionProblem(null), /^A bank .+\.$/);
+});
+
+test('the page renders a failed bank instead of dropping it', () => {
+  // Dropping it made a broken connection identical to a bank with no accounts:
+  // it left the totals silently while the header said the figures were fresh.
+  const js = fs.readFileSync(path.join(__dirname, '..', 'docs', 'balances.js'), 'utf8');
+  assert.match(js, /if \(inst\.error\)/,
+    'renderBalances does not special-case a bank that could not be read');
+  assert.match(js, /bal-unreadable/);
+});
+
+test('a problem is surfaced on a quiet refresh, not only a manual one', () => {
+  // Auto-refresh is the only kind most people ever trigger. Suppressing this
+  // as noise meant a bank could drop out of the totals and never say so.
+  const js = fs.readFileSync(path.join(__dirname, '..', 'docs', 'balances.js'), 'utf8');
+  // Line-ending agnostic: this file is CRLF, so a literal \n never matches.
+  const m = js.match(/const broken = unreadable\(state\.institutions\);\s*if \(broken\.length\)/);
+  assert.ok(m, 'refreshBalances does not check for unreadable banks');
+  const block = js.slice(m.index, m.index + 400);
+  const guarded = block.indexOf('!quiet');
+  const reported = block.indexOf('setStatus');
+  assert.ok(reported > 0 && (guarded === -1 || reported < guarded),
+    'the problem is reported only when the refresh was not quiet');
 });
 
 /* ----------------------------------------------------------------- money */

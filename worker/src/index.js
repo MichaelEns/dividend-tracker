@@ -380,7 +380,11 @@ async function plaid(env, path, body, scope) {
   try { payload = JSON.parse(text); } catch { /* leave null */ }
   if (!resp.ok) {
     const msg = payload && (payload.error_message || payload.error_code) || text || `HTTP ${resp.status}`;
-    throw new Error(`Plaid ${path}: ${msg}`);
+    const error = new Error(`Plaid ${path}: ${msg}`);
+    // Carried separately because the prose is Plaid's and changes; the code is
+    // stable and is what the page turns into a plain-English instruction.
+    error.plaidCode = (payload && payload.error_code) || null;
+    throw error;
   }
   return payload || {};
 }
@@ -748,16 +752,32 @@ async function readBalances(env) {
         readAt: new Date().toISOString(),
       };
     } catch (err) {
-      return { key, institution: item.institution || null, accounts: [], readAt: null,
-        error: `${item.institution || "A connection"}: ${(err && err.message) || "failed"}` };
+      return {
+        key,
+        institution: item.institution || null,
+        accounts: [],
+        readAt: null,
+        // Plaid's code rather than its prose: the page turns it into something
+        // a person can act on, and the raw message names internals.
+        errorCode: (err && err.plaidCode) || null,
+        error: `${item.institution || "A connection"}: ${(err && err.message) || "failed"}`,
+      };
     }
   }));
 
   const errors = settled.filter((s) => s.error).map((s) => s.error);
   return {
-    institutions: settled.map(({ error, ...rest }) => rest),
+    // The error stays ON the institution. Stripping it here left a bank that
+    // could not be read looking exactly like a bank with no accounts: it
+    // vanished from the totals, while the header went on saying the figures
+    // had just been read. Someone deciding what they can spend would have had
+    // no way to tell a missing bank from an empty one.
+    institutions: settled,
     errors,
     connected: true,
+    // True when at least one bank could not be read, so the page can say the
+    // total is incomplete rather than presenting a smaller number as fact.
+    partial: errors.length > 0,
   };
 }
 
