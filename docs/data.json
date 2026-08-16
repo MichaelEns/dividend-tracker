@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-15T13:01:27+00:00",
-  "asOfDate": "2026-08-15",
+  "generatedAt": "2026-08-16T13:03:14+00:00",
+  "asOfDate": "2026-08-16",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -486,7 +486,7 @@
           "kind": "income",
           "pay_date": "2027-03-12",
           "source": "projection",
-          "confidence": 0.796,
+          "confidence": 0.797,
           "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
         },
         {
@@ -541,7 +541,7 @@
           "kind": "income",
           "pay_date": "2028-06-08",
           "source": "projection",
-          "confidence": 0.679,
+          "confidence": 0.68,
           "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
         },
         {
@@ -1141,7 +1141,7 @@
           "pay_date": "2027-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.728,
+          "confidence": 0.729,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1213,7 +1213,7 @@
           "pay_date": "2028-10-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.635,
+          "confidence": 0.636,
           "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
         },
         {
