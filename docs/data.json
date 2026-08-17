@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-16T13:03:14+00:00",
-  "asOfDate": "2026-08-16",
+  "generatedAt": "2026-08-17T13:09:11+00:00",
+  "asOfDate": "2026-08-17",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -24,15 +24,6 @@
       "growthRate": 0.1039,
       "warnings": [],
       "distributions": [
-        {
-          "symbol": "MSFT",
-          "ex_date": "2014-08-19",
-          "amount": 0.28,
-          "status": "paid",
-          "kind": "income",
-          "pay_date": "2014-09-11",
-          "source": "Yahoo Finance"
-        },
         {
           "symbol": "MSFT",
           "ex_date": "2014-11-18",
@@ -470,123 +461,134 @@
         {
           "symbol": "MSFT",
           "ex_date": "2026-11-18",
-          "amount": 1.001446,
+          "amount": 0.999216,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2026-12-11",
+          "pay_date": "2026-12-10",
           "source": "projection",
-          "confidence": 0.822,
-          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+          "confidence": 0.823,
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2027-02-17",
-          "amount": 1.001446,
+          "amount": 0.999216,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2027-03-12",
+          "pay_date": "2027-03-11",
           "source": "projection",
           "confidence": 0.797,
-          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2027-05-17",
-          "amount": 1.001446,
+          "amount": 0.999216,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2027-06-09",
+          "pay_date": "2027-06-08",
           "source": "projection",
-          "confidence": 0.772,
-          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+          "confidence": 0.773,
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2027-08-16",
-          "amount": 1.001446,
+          "amount": 0.999216,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2027-09-08",
+          "pay_date": "2027-09-07",
           "source": "projection",
           "confidence": 0.748,
-          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2027-11-18",
-          "amount": 1.102082,
+          "amount": 1.097178,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2027-12-13",
+          "pay_date": "2027-12-10",
           "source": "projection",
           "confidence": 0.724,
-          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2028-02-17",
-          "amount": 1.102082,
+          "amount": 1.097178,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2028-03-13",
+          "pay_date": "2028-03-10",
           "source": "projection",
           "confidence": 0.701,
-          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2028-05-16",
-          "amount": 1.102082,
+          "amount": 1.097178,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2028-06-08",
+          "pay_date": "2028-06-07",
           "source": "projection",
           "confidence": 0.68,
-          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2028-08-16",
-          "amount": 1.102082,
+          "amount": 1.097178,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2028-09-08",
+          "pay_date": "2028-09-07",
           "source": "projection",
           "confidence": 0.658,
-          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2028-11-17",
-          "amount": 1.21283,
+          "amount": 1.204744,
           "status": "projected",
           "kind": "income",
           "pay_date": "2028-12-11",
           "source": "projection",
           "confidence": 0.637,
-          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2029-02-16",
-          "amount": 1.21283,
+          "amount": 1.204744,
           "status": "projected",
           "kind": "income",
           "pay_date": "2029-03-12",
           "source": "projection",
           "confidence": 0.617,
-          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2029-05-16",
-          "amount": 1.21283,
+          "amount": 1.204744,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2029-06-08",
+          "pay_date": "2029-06-07",
           "source": "projection",
           "confidence": 0.598,
-          "basis": "Held flat at the latest declared rate, with a 10.0% annual raise applied each Nov"
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
+        },
+        {
+          "symbol": "MSFT",
+          "ex_date": "2029-08-16",
+          "amount": 1.204744,
+          "status": "projected",
+          "kind": "income",
+          "pay_date": "2029-09-07",
+          "source": "projection",
+          "confidence": 0.579,
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         }
       ]
     },
@@ -1129,7 +1131,7 @@
           "pay_date": "2026-12-18",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.81,
+          "confidence": 0.811,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
@@ -1153,7 +1155,7 @@
           "pay_date": "2027-07-09",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.78,
+          "confidence": 0.781,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         },
         {
@@ -1165,7 +1167,7 @@
           "pay_date": "2027-10-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.722,
+          "confidence": 0.723,
           "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
         },
         {
@@ -1177,7 +1179,7 @@
           "pay_date": "2027-12-20",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.713,
+          "confidence": 0.714,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
@@ -1225,7 +1227,7 @@
           "pay_date": "2028-12-19",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.627,
+          "confidence": 0.628,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
