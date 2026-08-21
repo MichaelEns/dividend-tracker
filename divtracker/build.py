@@ -127,6 +127,27 @@ def build_symbol(symbol_config, announcements: dict, today: date, horizon_years:
     confirmed_future.extend(announcements.get(symbol, []))
     confirmed_future = _dedupe(confirmed_future)
 
+    # Nasdaq now carries a dividend until it is paid and Yahoo starts carrying it
+    # a day or so after it goes ex, so for that window both describe the SAME
+    # payment. Keep the history copy: _apply_pay_dates has already given it the
+    # pay date, so nothing is lost, and the projection keeps the newest point in
+    # its series. Without this the row would be listed twice between the ex-date
+    # and the pay date.
+    history_keys = {(d.ex_date, d.kind, round(d.amount, 6)) for d in history}
+    confirmed_future = [
+        d for d in confirmed_future
+        if (d.ex_date, d.kind, round(d.amount, 6)) not in history_keys
+    ]
+
+    # Going ex is not the same as being paid - MSFT goes ex about three weeks
+    # before the cash lands. Status was decided by the ex-date alone, so the
+    # morning after a dividend went ex it was filed as settled history, and
+    # everything that asks "what is still coming" skipped money that had not
+    # turned up yet. Once a pay date is known, that is what decides.
+    for dist in history:
+        if dist.pay_date and dist.pay_date > today:
+            dist.status = STATUS_ANNOUNCED
+
     if symbol_config.kind == "fund" and not confirmed_future:
         result.warnings.append(
             "No public feed publishes announced distributions for open-end mutual funds. "

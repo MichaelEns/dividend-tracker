@@ -150,3 +150,89 @@ test('formatDate renders a Date, not an em dash', () => {
   assert.notStrictEqual(text, '\u2014');
   assert.match(text, /2026/);
 });
+
+/* ------------------------------- upcoming vs history, decided by arrival */
+
+const { arrivalDate, inRange } = require(path.join(__dirname, '..', 'docs', 'app.js'));
+
+// MSFT went ex on 20 Aug 2026 and pays on 10 Sep 2026. Between those dates the
+// money is declared, certain, and has not arrived.
+const IN_FLIGHT = { symbol: 'MSFT', exDate: '2026-08-20', payDate: '2026-09-10' };
+const BETWEEN = parseDate('2026-08-21');
+
+test('a dividend that has gone ex but not been paid is still Upcoming', () => {
+  // The reported bug: it dropped out of Upcoming the morning after the ex-date,
+  // three weeks before the cash arrived.
+  assert.strictEqual(inRange(IN_FLIGHT, 'upcoming', BETWEEN), true);
+});
+
+test('the same dividend is not also filed under History', () => {
+  // Showing in both would be a different lie: the money has not arrived.
+  assert.strictEqual(inRange(IN_FLIGHT, 'history', BETWEEN), false);
+});
+
+test('once the pay date passes it moves to History and leaves Upcoming', () => {
+  const after = parseDate('2026-09-11');
+  assert.strictEqual(inRange(IN_FLIGHT, 'upcoming', after), false);
+  assert.strictEqual(inRange(IN_FLIGHT, 'history', after), true);
+});
+
+test('on the pay date itself it is still Upcoming, and not yet History', () => {
+  // "It should show up until the actual pay date has passed" - on the pay date
+  // it has not passed. This also keeps the table's long-standing boundary, where
+  // a row dated today is upcoming. The Next payment card is deliberately
+  // stricter (it wants the next money to *come*, so it treats today as arrived);
+  // the two answer different questions and are pinned separately.
+  const onPayDay = parseDate('2026-09-10');
+  assert.strictEqual(inRange(IN_FLIGHT, 'upcoming', onPayDay), true);
+  assert.strictEqual(inRange(IN_FLIGHT, 'history', onPayDay), false);
+  assert.strictEqual(nextPayment([{ ...IN_FLIGHT, date: parseDate('2026-08-20') }], onPayDay), null,
+    'the card looks past a payment landing today');
+});
+
+test('a row is never in both buckets, and never in neither', () => {
+  // The two filters must partition: an off-by-one between them would either
+  // duplicate a payment or lose it entirely.
+  const rows = [IN_FLIGHT,
+    { exDate: '2026-04-04', payDate: null },
+    { exDate: '2026-11-18', payDate: '2026-12-11' },
+    { exDate: '2026-09-10', payDate: '2026-09-10' }];
+  for (const day of ['2026-08-19', '2026-08-20', '2026-08-21', '2026-09-10', '2026-09-11']) {
+    const today = parseDate(day);
+    for (const r of rows) {
+      const up = inRange(r, 'upcoming', today);
+      const hist = inRange(r, 'history', today);
+      assert.notStrictEqual(up, hist,
+        `${r.exDate}/${r.payDate} on ${day} was in ${up && hist ? 'both' : 'neither'} bucket`);
+    }
+  }
+});
+
+test('a row with no pay date still buckets by its ex-date', () => {
+  // Most fund rows have no published pay date; they must not all pile into one
+  // bucket just because the pay date is missing.
+  const fund = { symbol: 'FXAIX', exDate: '2026-04-04', payDate: null };
+  assert.strictEqual(inRange(fund, 'history', BETWEEN), true);
+  assert.strictEqual(inRange(fund, 'upcoming', BETWEEN), false);
+});
+
+test('a genuinely future dividend is Upcoming, as it always was', () => {
+  const future = { symbol: 'MSFT', exDate: '2026-11-18', payDate: '2026-12-11' };
+  assert.strictEqual(inRange(future, 'upcoming', BETWEEN), true);
+  assert.strictEqual(inRange(future, 'history', BETWEEN), false);
+});
+
+test('the all range keeps everything', () => {
+  for (const r of [IN_FLIGHT, { exDate: '2020-01-01', payDate: '2020-01-20' }]) {
+    assert.strictEqual(inRange(r, 'all', BETWEEN), true);
+  }
+});
+
+test('arrivalDate prefers the pay date and falls back to the ex-date', () => {
+  assert.strictEqual(arrivalDate(IN_FLIGHT).getTime(), parseDate('2026-09-10').getTime());
+  assert.strictEqual(arrivalDate({ exDate: '2026-04-04' }).getTime(),
+    parseDate('2026-04-04').getTime());
+  assert.strictEqual(arrivalDate({ exDate: '2026-04-04', payDate: '' }).getTime(),
+    parseDate('2026-04-04').getTime(), 'an empty string is not a pay date');
+  assert.strictEqual(arrivalDate(null), null);
+});

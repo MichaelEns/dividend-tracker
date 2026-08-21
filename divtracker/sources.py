@@ -172,7 +172,7 @@ def fetch_yahoo(symbol: str, years_back: int = 12) -> dict:
 
 
 def fetch_nasdaq_declared(symbol: str, today: date) -> tuple[list[Distribution], dict[date, date]]:
-    """Return Nasdaq's declared-but-not-yet-ex dividends, plus every pay date.
+    """Return Nasdaq's declared-but-not-yet-paid dividends, plus every pay date.
 
     Two things come back because one request carries both, and the second was
     previously being thrown away. Nasdaq's table spans years of *past*
@@ -220,8 +220,17 @@ def fetch_nasdaq_declared(symbol: str, today: date) -> tuple[list[Distribution],
 
         if ex_date is None or amount is None or amount <= 0:
             continue
-        if ex_date <= today:
-            continue  # already realized; Yahoo is the authority for history
+        # Drop the row only once the money has actually arrived, not when it
+        # goes ex. Skipping everything with a past ex-date opened a hole: Nasdaq
+        # stops offering a dividend on its ex-date, but Yahoo does not report one
+        # until a day or so afterwards, so for that window NEITHER source carried
+        # it and a declared dividend disappeared from the app outright - three
+        # weeks before it was due to be paid. Yahoo stays the authority for
+        # anything genuinely settled; a row with no pay date falls back to the
+        # ex-date, which is the old behaviour.
+        settled = pay_date if pay_date is not None else ex_date
+        if settled <= today:
+            continue
         row_type = (row.get("type") or "").strip().lower()
         kind = "capital_gain" if "capital" in row_type else "income"
         out.append(

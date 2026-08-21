@@ -388,9 +388,15 @@ def project(
 
 
 def trailing_12m(distributions: list[Distribution], today: date) -> float:
+    # Confirmed, not merely "paid". A dividend that has gone ex but is not due to
+    # be paid for another three weeks is now correctly marked announced rather
+    # than paid, and keying this on "paid" alone would have quietly dropped it
+    # out of the trailing figure - and so out of the yield - for those weeks.
+    # Trailing yield is conventionally measured by ex-date, which the date window
+    # below already does, so admitting announced rows keeps the number stable.
     cutoff = today - timedelta(days=365)
     return sum(
         d.amount
         for d in distributions
-        if d.status == "paid" and cutoff < d.ex_date <= today
+        if d.is_confirmed and cutoff < d.ex_date <= today
     )

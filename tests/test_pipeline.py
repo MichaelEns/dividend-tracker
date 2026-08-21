@@ -264,6 +264,131 @@ class NasdaqPayDateHarvestTests(unittest.TestCase):
         self.assertEqual(declared, [])
         self.assertEqual(pay_dates, {})
 
+    def test_a_dividend_that_has_gone_ex_is_kept_until_it_is_paid(self):
+        # The reported bug. This function was asked only for not-yet-ex rows, so
+        # it stopped offering the 20 Aug dividend on 20 Aug - but Yahoo does not
+        # report a dividend until a day or so after its ex-date, so on that day
+        # NEITHER source carried it and a declared payment disappeared from the
+        # app outright, three weeks before it was due to arrive.
+        for today in (date(2026, 8, 20), date(2026, 8, 21), date(2026, 9, 9)):
+            declared, _ = self._fetch(today)
+            self.assertEqual([d.ex_date for d in declared], [date(2026, 8, 20)],
+                             f"the declared, unpaid dividend disappeared on {today}")
+            self.assertEqual(declared[0].pay_date, date(2026, 9, 10))
+            self.assertEqual(declared[0].status, STATUS_ANNOUNCED)
+
+    def test_it_is_dropped_once_the_money_has_actually_arrived(self):
+        for today in (date(2026, 9, 10), date(2026, 9, 11)):
+            declared, _ = self._fetch(today)
+            self.assertEqual(declared, [], f"still offered as upcoming on {today}")
+
+    def test_with_no_pay_date_the_ex_date_still_settles_it(self):
+        # Unparseable or absent pay date must fall back to the old behaviour
+        # rather than pinning the row as upcoming forever.
+        import divtracker.sources as src
+        original = src._get_json
+        src._get_json = lambda url, **kw: {"data": {"dividends": {"rows": [
+            {"exOrEffDate": "08/20/2026", "paymentDate": "N/A", "amount": "$0.91"},
+        ]}}}
+        try:
+            after, _ = src.fetch_nasdaq_declared("MSFT", date(2026, 8, 21))
+            before, _ = src.fetch_nasdaq_declared("MSFT", date(2026, 8, 19))
+        finally:
+            src._get_json = original
+        self.assertEqual(after, [], "an undated row must not linger past its ex-date")
+        self.assertEqual([d.ex_date for d in before], [date(2026, 8, 20)])
+
+
+class InFlightDividendTests(unittest.TestCase):
+    """A dividend between its ex-date and its pay date is money still coming.
+
+    MSFT goes ex about three weeks before it pays, and the pipeline treated the
+    ex-date as the moment a dividend became history. That lost the payment twice
+    over: Nasdaq stopped offering it on the ex-date while Yahoo had not yet
+    started, so for a day it existed nowhere; and once Yahoo did report it, it
+    arrived flagged 'paid' three weeks before the cash did.
+    """
+
+    EX = date(2026, 8, 20)
+    PAY = date(2026, 9, 10)
+
+    PAST = [
+        (date(2025, 2, 19), 0.83), (date(2025, 5, 14), 0.83),
+        (date(2025, 8, 21), 0.83), (date(2025, 11, 20), 0.83),
+        (date(2026, 2, 19), 0.91), (date(2026, 5, 21), 0.91),
+    ]
+
+    def _build(self, today, yahoo_has_it):
+        import divtracker.build as b
+        from divtracker.model import SymbolConfig
+
+        history = [
+            Distribution(symbol="MSFT", ex_date=ex, amount=amt,
+                         status=STATUS_PAID, source="Yahoo Finance")
+            for ex, amt in self.PAST
+        ]
+        if yahoo_has_it:
+            history.append(Distribution(symbol="MSFT", ex_date=self.EX, amount=0.91,
+                                        status=STATUS_PAID, source="Yahoo Finance"))
+
+        pay_dates = {ex: ex + timedelta(days=21) for ex, _ in self.PAST}
+        pay_dates[self.EX] = self.PAY
+
+        declared = []
+        if self.PAY > today:
+            declared = [Distribution(symbol="MSFT", ex_date=self.EX, amount=0.91,
+                                     status=STATUS_ANNOUNCED, pay_date=self.PAY,
+                                     source="Nasdaq (declared)")]
+
+        orig_y, orig_n = b.fetch_yahoo, b.fetch_nasdaq_declared
+        b.fetch_yahoo = lambda s: {"distributions": history, "price": 500.0,
+                                   "currency": "USD", "name": "Microsoft"}
+        b.fetch_nasdaq_declared = lambda s, t: (list(declared), dict(pay_dates))
+        try:
+            return b.build_symbol(SymbolConfig(symbol="MSFT", kind="equity"), {}, today, 3)
+        finally:
+            b.fetch_yahoo, b.fetch_nasdaq_declared = orig_y, orig_n
+
+    def _rows(self, result):
+        return [d for d in result.distributions if d.ex_date == self.EX]
+
+    def test_it_exists_on_its_ex_date_even_before_yahoo_reports_it(self):
+        rows = self._rows(self._build(self.EX, yahoo_has_it=False))
+        self.assertEqual(len(rows), 1, "the payment vanished from the app entirely")
+        self.assertEqual(rows[0].pay_date, self.PAY)
+        self.assertEqual(rows[0].status, STATUS_ANNOUNCED)
+
+    def test_it_is_listed_once_when_both_sources_carry_it(self):
+        # Relaxing the Nasdaq cutoff means both feeds describe this payment for
+        # the three weeks between ex and pay; it must not appear twice.
+        rows = self._rows(self._build(date(2026, 8, 21), yahoo_has_it=True))
+        self.assertEqual(len(rows), 1, "the same payment was listed twice")
+
+    def test_it_is_still_announced_after_yahoo_reports_it(self):
+        rows = self._rows(self._build(date(2026, 8, 21), yahoo_has_it=True))
+        self.assertEqual(rows[0].status, STATUS_ANNOUNCED,
+                         "money that has not arrived was reported as paid")
+        self.assertEqual(rows[0].pay_date, self.PAY)
+
+    def test_it_becomes_paid_once_the_pay_date_passes(self):
+        rows = self._rows(self._build(date(2026, 9, 11), yahoo_has_it=True))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].status, STATUS_PAID)
+
+    def test_the_trailing_figure_still_counts_it(self):
+        # It is within the trailing twelve months by ex-date, which is how
+        # trailing yield is measured. Keying that sum on 'paid' alone would have
+        # dropped it - and moved the reported yield - for those three weeks.
+        result = self._build(date(2026, 8, 21), yahoo_has_it=True)
+        # cutoff is exclusive, so 21 Aug 2025 falls just outside.
+        self.assertAlmostEqual(result.trailing_12m, 0.83 + 0.91 + 0.91 + 0.91, places=6)
+
+    def test_no_projection_is_invented_over_the_top_of_it(self):
+        result = self._build(date(2026, 8, 21), yahoo_has_it=True)
+        projected = [d for d in result.distributions
+                     if d.status == STATUS_PROJECTED and abs((d.ex_date - self.EX).days) <= 20]
+        self.assertEqual(projected, [], "a projection duplicated the real dividend")
+
 class FundPayDateEstimateTests(unittest.TestCase):
     """No feed publishes mutual fund pay dates; Fidelity pays the next weekday."""
 

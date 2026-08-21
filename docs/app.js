@@ -77,6 +77,25 @@ function parseDate(value) {
   return new Date(parts[0], parts[1] - 1, parts[2]);
 }
 
+/**
+ * When the money actually lands.
+ *
+ * The pay date if one is known, otherwise the ex-date. Every question of the
+ * form "is this still coming?" must be asked of this date and not of the
+ * ex-date: an equity goes ex about three weeks before it pays, so for those
+ * three weeks the ex-date says "past" while the cash has not arrived. Bucketing
+ * by ex-date put a declared, unpaid dividend in History, counted it as already
+ * received, and left it out of the next twelve months.
+ *
+ * Falls back to the ex-date so a row whose feed publishes no pay date - which
+ * is most fund rows here - still sorts and filters somewhere sensible rather
+ * than vanishing.
+ */
+function arrivalDate(row) {
+  if (!row) return null;
+  return parseDate(row.payDate) || parseDate(row.exDate) || row.date || null;
+}
+
 function formatDate(value) {
   const date = parseDate(value);
   if (!date) return '—';
@@ -880,6 +899,7 @@ function allRows() {
         source: dist.source || '',
         note: dist.note || '',
         date: parseDate(dist.ex_date),
+        when: arrivalDate({ payDate: dist.pay_date || null, exDate: dist.ex_date }),
       });
     });
   });
@@ -914,15 +934,30 @@ function withDollars(rows) {
   });
 }
 
+/**
+ * Does this row belong in the chosen range?
+ *
+ * Pure, and separated from filterRows so the rule can be tested without a DOM
+ * or app state - this is the rule that decides whether money you have not yet
+ * received is shown as still coming.
+ */
+function inRange(row, range, today) {
+  const when = (row && row.when) || arrivalDate(row);
+  if (!when) return true;
+  if (range === 'upcoming' && when < today) return false;
+  if (range === 'history' && when >= today) return false;
+  return true;
+}
+
 function filterRows(rows) {
   const { range, hideProjected, symbols } = state.prefs;
   const today = state.today;
   return rows.filter((row) => {
     if (symbols.length && !symbols.includes(row.symbol)) return false;
     if (hideProjected && row.status === 'projected') return false;
-    if (range === 'upcoming' && row.date < today) return false;
-    if (range === 'history' && row.date >= today) return false;
-    return true;
+    // By arrival, not by ex-date: a dividend that has gone ex but has not been
+    // paid is still money that is coming, and belongs in Upcoming until it lands.
+    return inRange(row, range, today);
   });
 }
 
@@ -956,7 +991,7 @@ function renderMeta() {
 function nextPayment(rows, today) {
   let best = null;
   for (const row of rows || []) {
-    const when = parseDate(row.payDate) || row.date;
+    const when = row.when || arrivalDate(row);
     if (!when || !(when > today)) continue;
     if (!best || when < best.when) best = { row, when };
   }
@@ -971,8 +1006,14 @@ function renderSummary(rows) {
   const hasHoldings = Object.values(state.holdings).some((v) => v > 0);
 
   const scoped = rows.filter((r) => !state.prefs.symbols.length || state.prefs.symbols.includes(r.symbol));
-  const trailing = scoped.filter((r) => r.status === 'paid' && r.date > yearAgo && r.date <= today);
-  const ahead = scoped.filter((r) => r.date > today && r.date <= yearAhead);
+  // Both windows are measured by arrival. Keyed on the ex-date, a dividend that
+  // had gone ex but was still three weeks from paying was counted as already
+  // received AND left out of the next twelve months - wrong twice over, in
+  // opposite directions.
+  const arrived = (r) => (r.when || r.date);
+  const trailing = scoped.filter((r) => r.status !== 'projected'
+    && arrived(r) > yearAgo && arrived(r) <= today);
+  const ahead = scoped.filter((r) => arrived(r) > today && arrived(r) <= yearAhead);
   const confirmedAhead = ahead.filter((r) => r.status !== 'projected');
   const upcoming = nextPayment(scoped, today);
   const next = upcoming && upcoming.row;
@@ -1193,7 +1234,7 @@ function renderTable(rows) {
   }
   empty.hidden = true;
 
-  const nextIdx = rows.findIndex((r) => r.date > today);
+  const nextIdx = rows.findIndex((r) => (r.when || r.date) > today);
   let lastQuarterKey = null;
   // Read once rather than per row: matchMedia is a layout query, and this runs
   // for every distribution on screen.
@@ -2704,6 +2745,8 @@ if (typeof module !== 'undefined' && module.exports) {
     extractHoldings,
     parseDate,
     formatDate,
+    arrivalDate,
+    inRange,
     quarterOf,
     portraitDates,
     classifyFreshness,

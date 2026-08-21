@@ -11,7 +11,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from divtracker.model import STATUS_ANNOUNCED, STATUS_PAID, Distribution  # noqa: E402
+from divtracker.model import (  # noqa: E402
+    STATUS_ANNOUNCED,
+    STATUS_PAID,
+    STATUS_PROJECTED,
+    Distribution,
+)
 from divtracker.projection import (  # noqa: E402
     annual_growth_rate,
     infer_cadence,
@@ -156,14 +161,34 @@ class ProjectionTests(unittest.TestCase):
 
 
 class TrailingTests(unittest.TestCase):
-    def test_trailing_12m_counts_only_paid(self):
+    def test_a_dividend_that_has_not_gone_ex_yet_does_not_count(self):
         rows = msft_history() + [
             make("MSFT", date(2026, 8, 19), 0.91, status=STATUS_ANNOUNCED)
         ]
         total = trailing_12m(rows, date(2026, 8, 4))
         # Window covers Aug 2025 (still the pre-raise 0.83) plus Nov 2025, Feb 2026
-        # and May 2026 at 0.91. The announced August 2026 row must not count.
+        # and May 2026 at 0.91. The August 2026 row has not gone ex yet.
         self.assertAlmostEqual(total, 0.83 + 0.91 * 3, places=6)
+
+    def test_a_projection_never_counts(self):
+        rows = msft_history() + [
+            make("MSFT", date(2026, 8, 19), 0.91, status=STATUS_PROJECTED)
+        ]
+        total = trailing_12m(rows, date(2026, 8, 20))
+        self.assertAlmostEqual(total, 0.91 * 3, places=6)
+
+    def test_a_dividend_that_has_gone_ex_but_not_paid_still_counts(self):
+        # Trailing yield is measured at the ex-date: that is when the share price
+        # drops by the dividend, so it is earned even though the cash lands weeks
+        # later. Keying this sum on 'paid' alone would drop the newest dividend -
+        # and visibly cut the reported yield - for the three weeks each quarter
+        # between MSFT's ex-date and its pay date.
+        rows = msft_history() + [
+            make("MSFT", date(2026, 8, 19), 0.91,
+                 status=STATUS_ANNOUNCED, pay_date=date(2026, 9, 10))
+        ]
+        total = trailing_12m(rows, date(2026, 8, 20))
+        self.assertAlmostEqual(total, 0.91 * 4, places=6)
 
 
 if __name__ == "__main__":
