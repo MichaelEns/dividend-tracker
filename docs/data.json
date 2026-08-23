@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-22T13:02:56+00:00",
-  "asOfDate": "2026-08-22",
+  "generatedAt": "2026-08-23T13:04:15+00:00",
+  "asOfDate": "2026-08-23",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -464,7 +464,7 @@
           "kind": "income",
           "pay_date": "2026-12-10",
           "source": "projection",
-          "confidence": 0.824,
+          "confidence": 0.825,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -475,7 +475,7 @@
           "kind": "income",
           "pay_date": "2027-03-11",
           "source": "projection",
-          "confidence": 0.798,
+          "confidence": 0.799,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -508,7 +508,7 @@
           "kind": "income",
           "pay_date": "2027-12-10",
           "source": "projection",
-          "confidence": 0.725,
+          "confidence": 0.726,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -552,7 +552,7 @@
           "kind": "income",
           "pay_date": "2028-12-11",
           "source": "projection",
-          "confidence": 0.638,
+          "confidence": 0.639,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -563,7 +563,7 @@
           "kind": "income",
           "pay_date": "2029-03-12",
           "source": "projection",
-          "confidence": 0.618,
+          "confidence": 0.619,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -574,7 +574,7 @@
           "kind": "income",
           "pay_date": "2029-06-07",
           "source": "projection",
-          "confidence": 0.599,
+          "confidence": 0.6,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -1189,7 +1189,7 @@
           "pay_date": "2028-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.642,
+          "confidence": 0.643,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1201,7 +1201,7 @@
           "pay_date": "2028-07-10",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.688,
+          "confidence": 0.689,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         },
         {
@@ -1237,7 +1237,7 @@
           "pay_date": "2029-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.565,
+          "confidence": 0.566,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1249,7 +1249,7 @@
           "pay_date": "2029-07-10",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.605,
+          "confidence": 0.606,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         }
       ]
@@ -1577,7 +1577,7 @@
           "pay_date": "2028-04-12",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.504,
+          "confidence": 0.505,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
         },
         {
