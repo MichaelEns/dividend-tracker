@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-26T13:18:45+00:00",
-  "asOfDate": "2026-08-26",
+  "generatedAt": "2026-08-27T22:18:18+00:00",
+  "asOfDate": "2026-08-27",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -15,12 +15,12 @@
       "name": "Microsoft Corporation",
       "kind": "equity",
       "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
-      "price": 491.71,
+      "price": 505.06,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 3.64,
-      "yieldPct": 0.7403,
+      "yieldPct": 0.7207,
       "growthRate": 0.1039,
       "warnings": [],
       "distributions": [
@@ -464,7 +464,7 @@
           "kind": "income",
           "pay_date": "2026-12-10",
           "source": "projection",
-          "confidence": 0.825,
+          "confidence": 0.826,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -508,7 +508,7 @@
           "kind": "income",
           "pay_date": "2027-12-10",
           "source": "projection",
-          "confidence": 0.726,
+          "confidence": 0.727,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -552,7 +552,7 @@
           "kind": "income",
           "pay_date": "2028-12-11",
           "source": "projection",
-          "confidence": 0.639,
+          "confidence": 0.64,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -595,12 +595,12 @@
       "name": "Fidelity 500 Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr/Jul/Oct/Dec. Yahoo folds any capital-gain distribution into the same stream.",
-      "price": 267.12,
+      "price": 268.99,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 2.76,
-      "yieldPct": 1.0332,
+      "yieldPct": 1.0261,
       "growthRate": 0.04129,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1129,7 +1129,7 @@
           "pay_date": "2026-12-18",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.813,
+          "confidence": 0.814,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
@@ -1189,7 +1189,7 @@
           "pay_date": "2028-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.643,
+          "confidence": 0.644,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1201,7 +1201,7 @@
           "pay_date": "2028-07-10",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.689,
+          "confidence": 0.69,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         },
         {
@@ -1259,12 +1259,12 @@
       "name": "Fidelity Total Market Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr and Dec; December typically also carries the capital-gain distribution.",
-      "price": 211.83,
+      "price": 213.32,
       "currency": "USD",
       "cadence": "semiannual",
       "cadenceDays": 119,
       "trailing12m": 1.95,
-      "yieldPct": 0.9205,
+      "yieldPct": 0.9141,
       "growthRate": 0.02851,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1601,7 +1601,7 @@
           "pay_date": "2029-04-12",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.444,
+          "confidence": 0.445,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
         }
       ]
