@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-30T16:44:01+00:00",
-  "asOfDate": "2026-08-30",
+  "generatedAt": "2026-08-31T19:08:46+00:00",
+  "asOfDate": "2026-08-31",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -15,12 +15,12 @@
       "name": "Microsoft Corporation",
       "kind": "equity",
       "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
-      "price": 513.53,
+      "price": 510.455,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 3.64,
-      "yieldPct": 0.7088,
+      "yieldPct": 0.7131,
       "growthRate": 0.1039,
       "warnings": [],
       "distributions": [
@@ -508,7 +508,7 @@
           "kind": "income",
           "pay_date": "2027-12-10",
           "source": "projection",
-          "confidence": 0.727,
+          "confidence": 0.728,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -1129,7 +1129,7 @@
           "pay_date": "2026-12-18",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.814,
+          "confidence": 0.815,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
@@ -1153,7 +1153,7 @@
           "pay_date": "2027-07-09",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.784,
+          "confidence": 0.785,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         },
         {
@@ -1225,7 +1225,7 @@
           "pay_date": "2028-12-19",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.63,
+          "confidence": 0.631,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
