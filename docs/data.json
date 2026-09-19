@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-18T16:28:12+00:00",
-  "asOfDate": "2026-09-18",
+  "generatedAt": "2026-09-19T15:55:38+00:00",
+  "asOfDate": "2026-09-19",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -15,12 +15,12 @@
       "name": "Microsoft Corporation",
       "kind": "equity",
       "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
-      "price": 493.13,
+      "price": 493.78,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 3.64,
-      "yieldPct": 0.7381,
+      "yieldPct": 0.7372,
       "growthRate": 0.1039,
       "warnings": [],
       "distributions": [
@@ -486,7 +486,7 @@
           "kind": "income",
           "pay_date": "2027-06-08",
           "source": "projection",
-          "confidence": 0.781,
+          "confidence": 0.782,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -508,7 +508,7 @@
           "kind": "income",
           "pay_date": "2027-12-10",
           "source": "projection",
-          "confidence": 0.732,
+          "confidence": 0.733,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -519,7 +519,7 @@
           "kind": "income",
           "pay_date": "2028-03-10",
           "source": "projection",
-          "confidence": 0.709,
+          "confidence": 0.71,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -541,7 +541,7 @@
           "kind": "income",
           "pay_date": "2028-09-11",
           "source": "projection",
-          "confidence": 0.665,
+          "confidence": 0.666,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -552,7 +552,7 @@
           "kind": "income",
           "pay_date": "2028-12-11",
           "source": "projection",
-          "confidence": 0.644,
+          "confidence": 0.645,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -595,12 +595,12 @@
       "name": "Fidelity 500 Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr/Jul/Oct/Dec. Yahoo folds any capital-gain distribution into the same stream.",
-      "price": 265.99,
+      "price": 266.43,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 2.76,
-      "yieldPct": 1.0376,
+      "yieldPct": 1.0359,
       "growthRate": 0.04129,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1117,7 +1117,7 @@
           "pay_date": "2026-10-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.83,
+          "confidence": 0.831,
           "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
         },
         {
@@ -1189,7 +1189,7 @@
           "pay_date": "2028-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.648,
+          "confidence": 0.649,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1259,12 +1259,12 @@
       "name": "Fidelity Total Market Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr and Dec; December typically also carries the capital-gain distribution.",
-      "price": 210.29,
+      "price": 210.5,
       "currency": "USD",
       "cadence": "semiannual",
       "cadenceDays": 119,
       "trailing12m": 1.95,
-      "yieldPct": 0.9273,
+      "yieldPct": 0.9264,
       "growthRate": 0.02851,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
