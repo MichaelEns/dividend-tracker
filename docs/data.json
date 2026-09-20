@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-19T15:55:38+00:00",
-  "asOfDate": "2026-09-19",
+  "generatedAt": "2026-09-20T16:11:33+00:00",
+  "asOfDate": "2026-09-20",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -475,7 +475,7 @@
           "kind": "income",
           "pay_date": "2027-03-11",
           "source": "projection",
-          "confidence": 0.806,
+          "confidence": 0.807,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -497,7 +497,7 @@
           "kind": "income",
           "pay_date": "2027-09-09",
           "source": "projection",
-          "confidence": 0.756,
+          "confidence": 0.757,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -563,7 +563,7 @@
           "kind": "income",
           "pay_date": "2029-03-12",
           "source": "projection",
-          "confidence": 0.624,
+          "confidence": 0.625,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -574,7 +574,7 @@
           "kind": "income",
           "pay_date": "2029-06-07",
           "source": "projection",
-          "confidence": 0.605,
+          "confidence": 0.606,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -1141,7 +1141,7 @@
           "pay_date": "2027-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.737,
+          "confidence": 0.738,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1249,7 +1249,7 @@
           "pay_date": "2029-07-10",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.611,
+          "confidence": 0.612,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         }
       ]
