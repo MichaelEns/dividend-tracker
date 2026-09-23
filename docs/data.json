@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-22T17:00:30+00:00",
-  "asOfDate": "2026-09-22",
+  "generatedAt": "2026-09-23T17:07:31+00:00",
+  "asOfDate": "2026-09-23",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -15,12 +15,12 @@
       "name": "Microsoft Corporation",
       "kind": "equity",
       "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
-      "price": 496.73,
+      "price": 499.53,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 3.64,
-      "yieldPct": 0.7328,
+      "yieldPct": 0.7287,
       "growthRate": 0.1039,
       "warnings": [],
       "distributions": [
@@ -486,7 +486,7 @@
           "kind": "income",
           "pay_date": "2027-06-08",
           "source": "projection",
-          "confidence": 0.782,
+          "confidence": 0.783,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -497,7 +497,7 @@
           "kind": "income",
           "pay_date": "2027-09-09",
           "source": "projection",
-          "confidence": 0.757,
+          "confidence": 0.758,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -508,7 +508,7 @@
           "kind": "income",
           "pay_date": "2027-12-10",
           "source": "projection",
-          "confidence": 0.733,
+          "confidence": 0.734,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -519,7 +519,7 @@
           "kind": "income",
           "pay_date": "2028-03-10",
           "source": "projection",
-          "confidence": 0.71,
+          "confidence": 0.711,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -552,7 +552,7 @@
           "kind": "income",
           "pay_date": "2028-12-11",
           "source": "projection",
-          "confidence": 0.645,
+          "confidence": 0.646,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -1189,7 +1189,7 @@
           "pay_date": "2028-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.649,
+          "confidence": 0.65,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1225,7 +1225,7 @@
           "pay_date": "2028-12-19",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.635,
+          "confidence": 0.636,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
@@ -1259,12 +1259,12 @@
       "name": "Fidelity Total Market Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr and Dec; December typically also carries the capital-gain distribution.",
-      "price": 213.54,
+      "price": 213.66,
       "currency": "USD",
       "cadence": "semiannual",
       "cadenceDays": 119,
       "trailing12m": 1.95,
-      "yieldPct": 0.9132,
+      "yieldPct": 0.9127,
       "growthRate": 0.02851,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1553,7 +1553,7 @@
           "pay_date": "2027-04-13",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.579,
+          "confidence": 0.58,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
         },
         {
@@ -1589,7 +1589,7 @@
           "pay_date": "2028-12-20",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.36,
+          "confidence": 0.361,
           "basis": "Dec 2025 distribution of $1.7860/share grown +2.9%/yr"
         },
         {
