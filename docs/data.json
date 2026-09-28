@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-27T17:00:58+00:00",
-  "asOfDate": "2026-09-27",
+  "generatedAt": "2026-09-28T19:42:14+00:00",
+  "asOfDate": "2026-09-28",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -15,12 +15,12 @@
       "name": "Microsoft Corporation",
       "kind": "equity",
       "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
-      "price": 516.17,
+      "price": 509.215,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 3.64,
-      "yieldPct": 0.7052,
+      "yieldPct": 0.7148,
       "growthRate": 0.1039,
       "warnings": [],
       "distributions": [
@@ -541,7 +541,7 @@
           "kind": "income",
           "pay_date": "2028-09-11",
           "source": "projection",
-          "confidence": 0.667,
+          "confidence": 0.668,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -552,7 +552,7 @@
           "kind": "income",
           "pay_date": "2028-12-11",
           "source": "projection",
-          "confidence": 0.646,
+          "confidence": 0.647,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -1129,7 +1129,7 @@
           "pay_date": "2026-12-18",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.822,
+          "confidence": 0.823,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
@@ -1141,7 +1141,7 @@
           "pay_date": "2027-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.739,
+          "confidence": 0.74,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1541,7 +1541,7 @@
           "pay_date": "2026-12-21",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.466,
+          "confidence": 0.467,
           "basis": "Dec 2025 distribution of $1.7860/share grown +2.9%/yr"
         },
         {
@@ -1553,7 +1553,7 @@
           "pay_date": "2027-04-13",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.58,
+          "confidence": 0.581,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
         },
         {
@@ -1601,7 +1601,7 @@
           "pay_date": "2029-04-12",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.449,
+          "confidence": 0.45,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
         }
       ]
