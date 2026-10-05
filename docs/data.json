@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-04T16:52:14+00:00",
-  "asOfDate": "2026-10-04",
+  "generatedAt": "2026-10-05T20:45:10+00:00",
+  "asOfDate": "2026-10-05",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -15,12 +15,12 @@
       "name": "Microsoft Corporation",
       "kind": "equity",
       "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
-      "price": 517.53,
+      "price": 525.18,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 3.64,
-      "yieldPct": 0.7033,
+      "yieldPct": 0.6931,
       "growthRate": 0.1039,
       "warnings": [],
       "distributions": [
@@ -475,7 +475,7 @@
           "kind": "income",
           "pay_date": "2027-03-11",
           "source": "projection",
-          "confidence": 0.81,
+          "confidence": 0.811,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -497,7 +497,7 @@
           "kind": "income",
           "pay_date": "2027-09-09",
           "source": "projection",
-          "confidence": 0.76,
+          "confidence": 0.761,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -508,7 +508,7 @@
           "kind": "income",
           "pay_date": "2027-12-10",
           "source": "projection",
-          "confidence": 0.736,
+          "confidence": 0.737,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -519,7 +519,7 @@
           "kind": "income",
           "pay_date": "2028-03-10",
           "source": "projection",
-          "confidence": 0.713,
+          "confidence": 0.714,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -530,7 +530,7 @@
           "kind": "income",
           "pay_date": "2028-06-07",
           "source": "projection",
-          "confidence": 0.691,
+          "confidence": 0.692,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -1100,18 +1100,6 @@
         },
         {
           "symbol": "FXAIX",
-          "ex_date": "2026-10-05",
-          "amount": 0.699747,
-          "status": "projected",
-          "kind": "distribution",
-          "pay_date": "2026-10-06",
-          "pay_date_estimated": true,
-          "source": "projection",
-          "confidence": 0.835,
-          "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
-        },
-        {
-          "symbol": "FXAIX",
           "ex_date": "2026-12-17",
           "amount": 0.754935,
           "status": "projected",
@@ -1119,7 +1107,7 @@
           "pay_date": "2026-12-18",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.824,
+          "confidence": 0.825,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
@@ -1131,7 +1119,7 @@
           "pay_date": "2027-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.741,
+          "confidence": 0.742,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
