@@ -112,11 +112,8 @@ function formatDateShort(value) {
 /**
  * The calendar quarter a distribution belongs to.
  *
- * Keyed off the ex-date, which is both how dividends are conventionally
- * labelled ("the Q1 dividend") and the column the table sorts by. Using the pay
- * date instead would scatter the colour bands, because a late-March ex-date
- * often pays in April and would land in a different quarter from the rows it
- * sits between.
+ * Keyed off the ex-date, which is how dividends are conventionally labelled
+ * ("the Q1 dividend"), independently of when the payment arrives.
  */
 function quarterOf(value) {
   const date = value instanceof Date ? value : parseDate(value);
@@ -949,16 +946,19 @@ function inRange(row, range, today) {
   return true;
 }
 
-function filterRows(rows) {
-  const { range, hideProjected, symbols } = state.prefs;
-  const today = state.today;
-  return rows.filter((row) => {
+function filterRows(rows, prefs = state.prefs, today = state.today) {
+  const { range, hideProjected, symbols } = prefs;
+  const filtered = rows.filter((row) => {
     if (symbols.length && !symbols.includes(row.symbol)) return false;
     if (hideProjected && row.status === 'projected') return false;
     // By arrival, not by ex-date: a dividend that has gone ex but has not been
     // paid is still money that is coming, and belongs in Upcoming until it lands.
     return inRange(row, range, today);
   });
+  if (range === 'history') {
+    filtered.sort((a, b) => (b.when || arrivalDate(b)) - (a.when || arrivalDate(a)));
+  }
+  return filtered;
 }
 
 /* ----------------------------------------------------------------- rendering */
@@ -2747,6 +2747,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatDate,
     arrivalDate,
     inRange,
+    filterRows,
     quarterOf,
     portraitDates,
     classifyFreshness,
