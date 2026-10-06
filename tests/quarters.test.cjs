@@ -1,8 +1,7 @@
 /*
  * Tests for quarter bucketing.
  *
- * The table colours each row by the quarter of its ex-date, and rows are sorted
- * by that same date, so quarters must form contiguous runs. Anything that
+ * The table colours each row by the quarter of its ex-date. Anything that
  * breaks the month -> quarter mapping, or that disagrees with parseDate about
  * which calendar day a distribution falls on, turns the colour bands into
  * stripes of noise.

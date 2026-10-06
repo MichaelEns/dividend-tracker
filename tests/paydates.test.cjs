@@ -153,7 +153,7 @@ test('formatDate renders a Date, not an em dash', () => {
 
 /* ------------------------------- upcoming vs history, decided by arrival */
 
-const { arrivalDate, inRange } = require(path.join(__dirname, '..', 'docs', 'app.js'));
+const { arrivalDate, inRange, filterRows } = require(path.join(__dirname, '..', 'docs', 'app.js'));
 
 // MSFT went ex on 20 Aug 2026 and pays on 10 Sep 2026. Between those dates the
 // money is declared, certain, and has not arrived.
@@ -235,4 +235,61 @@ test('arrivalDate prefers the pay date and falls back to the ex-date', () => {
   assert.strictEqual(arrivalDate({ exDate: '2026-04-04', payDate: '' }).getTime(),
     parseDate('2026-04-04').getTime(), 'an empty string is not a pay date');
   assert.strictEqual(arrivalDate(null), null);
+});
+
+/* ---------------------------------------------------------- display order */
+
+const preferences = (range) => ({ range, hideProjected: false, symbols: [] });
+
+test('History lists newest payments first even when ex-date order disagrees', () => {
+  const rows = [
+    row('OLD', '2025-12-10', '2025-12-31'),
+    row('EQUITY', '2026-03-20', '2026-04-15'),
+    row('FUND', '2026-03-30', '2026-03-31'),
+    row('FUTURE', '2026-09-10', '2026-09-11'),
+  ];
+  const original = rows.slice();
+  const result = filterRows(rows, preferences('history'), TODAY);
+  assert.deepStrictEqual(result.map((r) => r.symbol), ['EQUITY', 'FUND', 'OLD']);
+  assert.deepStrictEqual(rows, original, 'display sorting must not change calculation order');
+});
+
+test('History keeps a missing pay date in its ex-date position', () => {
+  const rows = [
+    row('OLD', '2025-12-10', '2025-12-31'),
+    row('UNKNOWN', '2026-03-30', null),
+    row('LATEST', '2026-03-20', '2026-04-15'),
+  ];
+  assert.deepStrictEqual(
+    filterRows(rows, preferences('history'), TODAY).map((r) => r.symbol),
+    ['LATEST', 'UNKNOWN', 'OLD'],
+  );
+});
+
+test('History preserves the existing order for payments on the same day', () => {
+  const rows = [
+    row('FIRST', '2026-03-20', '2026-04-15'),
+    row('SECOND', '2026-03-30', '2026-04-15'),
+  ];
+  assert.deepStrictEqual(
+    filterRows(rows, preferences('history'), TODAY).map((r) => r.symbol),
+    ['FIRST', 'SECOND'],
+  );
+});
+
+test('Upcoming and All preserve their existing order across view changes', () => {
+  const rows = [
+    row('OLD', '2025-12-10', '2025-12-31'),
+    row('EQUITY', '2026-09-02', '2026-09-23'),
+    row('FUND', '2026-09-10', '2026-09-11'),
+  ];
+  filterRows(rows, preferences('history'), TODAY);
+  assert.deepStrictEqual(
+    filterRows(rows, preferences('upcoming'), TODAY).map((r) => r.symbol),
+    ['EQUITY', 'FUND'],
+  );
+  assert.deepStrictEqual(
+    filterRows(rows, preferences('all'), TODAY).map((r) => r.symbol),
+    ['OLD', 'EQUITY', 'FUND'],
+  );
 });

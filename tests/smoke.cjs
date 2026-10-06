@@ -112,6 +112,7 @@ async function main() {
             projected: document.querySelectorAll('#dist-body .badge.projected').length,
           },
           firstRow: cells,
+          exDates: rows.map((tr) => tr.querySelector('.c-ex .date-main').textContent),
           firstValues: {
             perShare: value('.c-per'),
             shares: value('.c-sh'),
@@ -134,6 +135,10 @@ async function main() {
     console.log(JSON.stringify(result, null, 2));
 
     assert.ok(result.rowCount > 0, 'no distribution rows rendered');
+    const upcomingDates = result.exDates.map((value) => Date.parse(value));
+    assert.ok(upcomingDates.every((value) => Number.isFinite(value)), 'unreadable Upcoming date');
+    assert.ok(upcomingDates.every((value, i) => i === 0 || upcomingDates[i - 1] <= value),
+      'Upcoming must retain ascending ex-date order');
     assert.ok(result.badges.projected > 0, 'expected projected rows');
     assert.ok(result.notes >= 3, 'expected per-symbol notes for each symbol');
     assert.ok(result.yearRows > 0, 'year rollup did not render');
@@ -154,6 +159,10 @@ async function main() {
         return JSON.stringify({
           paid: document.querySelectorAll('#dist-body .badge.paid').length,
           projected: document.querySelectorAll('#dist-body .badge.projected').length,
+          dates: [...document.querySelectorAll('#dist-body tr.dist-row')].map((tr) =>
+            tr.querySelector('.c-pay').textContent.trim() === '—'
+              ? tr.querySelector('.c-ex .date-main').textContent
+              : tr.querySelector('.c-pay').textContent),
         });
       })()`,
       returnByValue: true,
@@ -161,6 +170,10 @@ async function main() {
     const hist = JSON.parse(history.result.value);
     assert.ok(hist.paid > 50, 'history view should list many paid rows, got ' + hist.paid);
     assert.strictEqual(hist.projected, 0, 'history view must not contain projections');
+    const historyDates = hist.dates.map((value) => Date.parse(value));
+    assert.ok(historyDates.every((value) => Number.isFinite(value)), 'unreadable History date');
+    assert.ok(historyDates.every((value, i) => i === 0 || historyDates[i - 1] >= value),
+      'History must list the most recent pay date first');
 
     // "Confirmed only" must remove every projected row.
     const confirmedOnly = await rpc(ws, id++, 'Runtime.evaluate', {
@@ -172,6 +185,7 @@ async function main() {
         return JSON.stringify({
           projected: document.querySelectorAll('#dist-body .badge.projected').length,
           total: document.querySelectorAll('#dist-body tr.dist-row').length,
+          exDates: [...document.querySelectorAll('#dist-body .c-ex .date-main')].map((el) => el.textContent),
         });
       })()`,
       returnByValue: true,
@@ -179,6 +193,10 @@ async function main() {
     const confirmed = JSON.parse(confirmedOnly.result.value);
     assert.strictEqual(confirmed.projected, 0, '"Confirmed only" left projections visible');
     assert.ok(confirmed.total > 0, '"Confirmed only" hid everything');
+    const allDates = confirmed.exDates.map((value) => Date.parse(value));
+    assert.ok(allDates.every((value) => Number.isFinite(value)), 'unreadable All date');
+    assert.ok(allDates.every((value, i) => i === 0 || allDates[i - 1] <= value),
+      'All must retain ascending ex-date order after visiting History');
 
     // Symbol chip filtering must scope the table to one security.
     const chipFiltered = await rpc(ws, id++, 'Runtime.evaluate', {

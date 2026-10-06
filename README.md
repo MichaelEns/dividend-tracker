@@ -41,6 +41,8 @@ browser's localStorage.
   [Holdings across several institutions](#holdings-across-several-institutions).
 - Distributions colour-coded by quarter, and a table that folds to three
   columns in portrait so dates and dollar amounts stay side by side.
+- History lists the most recent pay dates first, falling back to the ex-date
+  when a pay date is unavailable. Upcoming and All keep ascending ex-date order.
 - Staleness warnings that call out a stalled daily build or stale share counts,
   because a broken build renders identically to a healthy one.
 - **A separate bank balances page** for Canadian chequing, savings and card
