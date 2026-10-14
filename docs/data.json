@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-13T19:19:36+00:00",
-  "asOfDate": "2026-10-13",
+  "generatedAt": "2026-10-14T17:16:10+00:00",
+  "asOfDate": "2026-10-14",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -15,12 +15,12 @@
       "name": "Microsoft Corporation",
       "kind": "equity",
       "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
-      "price": 545.43,
+      "price": 535.97,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 3.64,
-      "yieldPct": 0.6674,
+      "yieldPct": 0.6791,
       "growthRate": 0.1039,
       "warnings": [],
       "distributions": [
@@ -574,7 +574,7 @@
           "kind": "income",
           "pay_date": "2029-06-07",
           "source": "projection",
-          "confidence": 0.61,
+          "confidence": 0.611,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -595,12 +595,12 @@
       "name": "Fidelity 500 Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr/Jul/Oct/Dec. Yahoo folds any capital-gain distribution into the same stream.",
-      "price": 271.32,
+      "price": 271.26,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
-      "trailing12m": 2.088,
-      "yieldPct": 0.7696,
+      "trailing12m": 2.801,
+      "yieldPct": 1.0326,
       "growthRate": 0.04129,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1100,6 +1100,16 @@
         },
         {
           "symbol": "FXAIX",
+          "ex_date": "2026-10-02",
+          "amount": 0.713,
+          "status": "paid",
+          "kind": "income",
+          "pay_date": "2026-10-05",
+          "pay_date_estimated": true,
+          "source": "Yahoo Finance"
+        },
+        {
+          "symbol": "FXAIX",
           "ex_date": "2026-12-17",
           "amount": 0.754935,
           "status": "projected",
@@ -1131,20 +1141,20 @@
           "pay_date": "2027-07-09",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.796,
+          "confidence": 0.797,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         },
         {
           "symbol": "FXAIX",
-          "ex_date": "2027-10-05",
-          "amount": 0.728639,
+          "ex_date": "2027-10-04",
+          "amount": 0.74244,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": "2027-10-06",
+          "pay_date": "2027-10-05",
           "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.737,
-          "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
+          "basis": "Oct 2026 distribution of $0.7130/share grown +4.1%/yr"
         },
         {
           "symbol": "FXAIX",
@@ -1184,15 +1194,15 @@
         },
         {
           "symbol": "FXAIX",
-          "ex_date": "2028-10-05",
-          "amount": 0.758725,
+          "ex_date": "2028-10-03",
+          "amount": 0.773095,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": "2028-10-06",
+          "pay_date": "2028-10-04",
           "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.649,
-          "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
+          "basis": "Oct 2026 distribution of $0.7130/share grown +4.1%/yr"
         },
         {
           "symbol": "FXAIX",
@@ -1227,20 +1237,20 @@
           "pay_date": "2029-07-10",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.616,
+          "confidence": 0.617,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         },
         {
           "symbol": "FXAIX",
-          "ex_date": "2029-10-05",
-          "amount": 0.790052,
+          "ex_date": "2029-10-03",
+          "amount": 0.805016,
           "status": "projected",
           "kind": "distribution",
-          "pay_date": "2029-10-08",
+          "pay_date": "2029-10-04",
           "pay_date_estimated": true,
           "source": "projection",
           "confidence": 0.571,
-          "basis": "Oct 2025 distribution of $0.6720/share grown +4.1%/yr"
+          "basis": "Oct 2026 distribution of $0.7130/share grown +4.1%/yr"
         }
       ]
     },
@@ -1249,12 +1259,12 @@
       "name": "Fidelity Total Market Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr and Dec; December typically also carries the capital-gain distribution.",
-      "price": 214.32,
+      "price": 214.19,
       "currency": "USD",
       "cadence": "semiannual",
       "cadenceDays": 119,
       "trailing12m": 1.95,
-      "yieldPct": 0.9099,
+      "yieldPct": 0.9104,
       "growthRate": 0.02851,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
