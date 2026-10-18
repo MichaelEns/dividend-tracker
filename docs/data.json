@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-17T15:39:35+00:00",
-  "asOfDate": "2026-10-17",
+  "generatedAt": "2026-10-18T15:55:16+00:00",
+  "asOfDate": "2026-10-18",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -1117,7 +1117,7 @@
           "pay_date": "2026-12-18",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.828,
+          "confidence": 0.829,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
@@ -1237,7 +1237,7 @@
           "pay_date": "2029-07-10",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.617,
+          "confidence": 0.618,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         },
         {
@@ -1553,7 +1553,7 @@
           "pay_date": "2027-04-13",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.584,
+          "confidence": 0.585,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
         },
         {
@@ -1577,7 +1577,7 @@
           "pay_date": "2028-04-12",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.514,
+          "confidence": 0.515,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
         },
         {
