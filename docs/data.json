@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-20T17:13:51+00:00",
-  "asOfDate": "2026-10-20",
+  "generatedAt": "2026-10-21T17:16:22+00:00",
+  "asOfDate": "2026-10-21",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -15,12 +15,12 @@
       "name": "Microsoft Corporation",
       "kind": "equity",
       "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
-      "price": 532.815,
+      "price": 533.0,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 3.64,
-      "yieldPct": 0.6832,
+      "yieldPct": 0.6829,
       "growthRate": 0.1039,
       "warnings": [],
       "distributions": [
@@ -519,7 +519,7 @@
           "kind": "income",
           "pay_date": "2028-03-10",
           "source": "projection",
-          "confidence": 0.717,
+          "confidence": 0.718,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -530,7 +530,7 @@
           "kind": "income",
           "pay_date": "2028-06-07",
           "source": "projection",
-          "confidence": 0.695,
+          "confidence": 0.696,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
@@ -585,7 +585,7 @@
           "kind": "income",
           "pay_date": "2029-09-10",
           "source": "projection",
-          "confidence": 0.592,
+          "confidence": 0.593,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         }
       ]
@@ -595,12 +595,12 @@
       "name": "Fidelity 500 Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr/Jul/Oct/Dec. Yahoo folds any capital-gain distribution into the same stream.",
-      "price": 267.3,
+      "price": 268.06,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 2.801,
-      "yieldPct": 1.0479,
+      "yieldPct": 1.0449,
       "growthRate": 0.04129,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1129,7 +1129,7 @@
           "pay_date": "2027-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.745,
+          "confidence": 0.746,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1141,7 +1141,7 @@
           "pay_date": "2027-07-09",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.798,
+          "confidence": 0.799,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         },
         {
@@ -1201,7 +1201,7 @@
           "pay_date": "2028-10-04",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.65,
+          "confidence": 0.651,
           "basis": "Oct 2026 distribution of $0.7130/share grown +4.1%/yr"
         },
         {
@@ -1249,7 +1249,7 @@
           "pay_date": "2029-10-04",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.572,
+          "confidence": 0.573,
           "basis": "Oct 2026 distribution of $0.7130/share grown +4.1%/yr"
         }
       ]
@@ -1259,12 +1259,12 @@
       "name": "Fidelity Total Market Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr and Dec; December typically also carries the capital-gain distribution.",
-      "price": 210.86,
+      "price": 211.69,
       "currency": "USD",
       "cadence": "semiannual",
       "cadenceDays": 119,
       "trailing12m": 1.95,
-      "yieldPct": 0.9248,
+      "yieldPct": 0.9212,
       "growthRate": 0.02851,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
