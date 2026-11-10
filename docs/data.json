@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-09T22:25:47+00:00",
-  "asOfDate": "2026-11-09",
+  "generatedAt": "2026-11-10T19:47:47+00:00",
+  "asOfDate": "2026-11-10",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -15,14 +15,16 @@
       "name": "Microsoft Corporation",
       "kind": "equity",
       "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
-      "price": 545.18,
+      "price": 535.33,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 3.64,
-      "yieldPct": 0.6677,
+      "yieldPct": 0.68,
       "growthRate": 0.1039,
-      "warnings": [],
+      "warnings": [
+        "No pay dates were available for this symbol, so rows show the ex-date instead."
+      ],
       "distributions": [
         {
           "symbol": "MSFT",
@@ -30,7 +32,7 @@
           "amount": 0.31,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2014-12-11",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -39,7 +41,7 @@
           "amount": 0.31,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2015-03-12",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -48,7 +50,7 @@
           "amount": 0.31,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2015-06-11",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -57,7 +59,7 @@
           "amount": 0.31,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2015-09-10",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -66,7 +68,7 @@
           "amount": 0.36,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2015-12-10",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -75,7 +77,7 @@
           "amount": 0.36,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2016-03-10",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -84,7 +86,7 @@
           "amount": 0.36,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2016-06-09",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -93,7 +95,7 @@
           "amount": 0.36,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2016-09-08",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -102,7 +104,7 @@
           "amount": 0.39,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2016-12-08",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -111,7 +113,7 @@
           "amount": 0.39,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2017-03-09",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -120,7 +122,7 @@
           "amount": 0.39,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2017-06-08",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -129,7 +131,7 @@
           "amount": 0.39,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2017-09-14",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -138,7 +140,7 @@
           "amount": 0.42,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2017-12-14",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -147,7 +149,7 @@
           "amount": 0.42,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2018-03-08",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -156,7 +158,7 @@
           "amount": 0.42,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2018-06-14",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -165,7 +167,7 @@
           "amount": 0.42,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2018-09-13",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -174,7 +176,7 @@
           "amount": 0.46,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2018-12-13",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -183,7 +185,7 @@
           "amount": 0.46,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2019-03-14",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -192,7 +194,7 @@
           "amount": 0.46,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2019-06-13",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -201,7 +203,7 @@
           "amount": 0.46,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2019-09-12",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -210,7 +212,7 @@
           "amount": 0.51,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2019-12-12",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -219,7 +221,7 @@
           "amount": 0.51,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2020-03-12",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -228,7 +230,7 @@
           "amount": 0.51,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2020-06-11",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -237,7 +239,7 @@
           "amount": 0.51,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2020-09-10",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -246,7 +248,7 @@
           "amount": 0.56,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2020-12-10",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -255,7 +257,7 @@
           "amount": 0.56,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2021-03-11",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -264,7 +266,7 @@
           "amount": 0.56,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2021-06-10",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -273,7 +275,7 @@
           "amount": 0.56,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2021-09-09",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -282,7 +284,7 @@
           "amount": 0.62,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2021-12-09",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -291,7 +293,7 @@
           "amount": 0.62,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2022-03-10",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -300,7 +302,7 @@
           "amount": 0.62,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2022-06-09",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -309,7 +311,7 @@
           "amount": 0.62,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2022-09-08",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -318,7 +320,7 @@
           "amount": 0.68,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2022-12-08",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -327,7 +329,7 @@
           "amount": 0.68,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2023-03-09",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -336,7 +338,7 @@
           "amount": 0.68,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2023-06-08",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -345,7 +347,7 @@
           "amount": 0.68,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2023-09-14",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -354,7 +356,7 @@
           "amount": 0.75,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2023-12-14",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -363,7 +365,7 @@
           "amount": 0.75,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2024-03-14",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -372,7 +374,7 @@
           "amount": 0.75,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2024-06-13",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -381,7 +383,7 @@
           "amount": 0.75,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2024-09-12",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -390,7 +392,7 @@
           "amount": 0.83,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2024-12-12",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -399,7 +401,7 @@
           "amount": 0.83,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2025-03-13",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -408,7 +410,7 @@
           "amount": 0.83,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2025-06-12",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -417,7 +419,7 @@
           "amount": 0.83,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2025-09-11",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -426,7 +428,7 @@
           "amount": 0.91,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2025-12-11",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -435,7 +437,7 @@
           "amount": 0.91,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2026-03-12",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -444,7 +446,7 @@
           "amount": 0.91,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2026-06-11",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
@@ -453,27 +455,27 @@
           "amount": 0.91,
           "status": "paid",
           "kind": "income",
-          "pay_date": "2026-09-10",
+          "pay_date": null,
           "source": "Yahoo Finance"
         },
         {
           "symbol": "MSFT",
-          "ex_date": "2026-11-19",
-          "amount": 0.98,
-          "status": "announced",
+          "ex_date": "2026-11-18",
+          "amount": 0.999216,
+          "status": "projected",
           "kind": "income",
-          "pay_date": "2026-12-10",
-          "record_date": "2026-11-19",
-          "declared_date": "2026-09-15",
-          "source": "Nasdaq (declared)"
+          "pay_date": null,
+          "source": "projection",
+          "confidence": 0.848,
+          "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2027-02-17",
-          "amount": 0.98,
+          "amount": 0.999216,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2027-03-11",
+          "pay_date": null,
           "source": "projection",
           "confidence": 0.821,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
@@ -481,10 +483,10 @@
         {
           "symbol": "MSFT",
           "ex_date": "2027-05-17",
-          "amount": 0.98,
+          "amount": 0.999216,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2027-06-08",
+          "pay_date": null,
           "source": "projection",
           "confidence": 0.796,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
@@ -492,10 +494,10 @@
         {
           "symbol": "MSFT",
           "ex_date": "2027-08-18",
-          "amount": 0.98,
+          "amount": 0.999216,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2027-09-09",
+          "pay_date": null,
           "source": "projection",
           "confidence": 0.77,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
@@ -503,10 +505,10 @@
         {
           "symbol": "MSFT",
           "ex_date": "2027-11-18",
-          "amount": 1.076078,
+          "amount": 1.097178,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2027-12-10",
+          "pay_date": null,
           "source": "projection",
           "confidence": 0.746,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
@@ -514,21 +516,21 @@
         {
           "symbol": "MSFT",
           "ex_date": "2028-02-17",
-          "amount": 1.076078,
+          "amount": 1.097178,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2028-03-10",
+          "pay_date": null,
           "source": "projection",
-          "confidence": 0.722,
+          "confidence": 0.723,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2028-05-16",
-          "amount": 1.076078,
+          "amount": 1.097178,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2028-06-07",
+          "pay_date": null,
           "source": "projection",
           "confidence": 0.7,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
@@ -536,10 +538,10 @@
         {
           "symbol": "MSFT",
           "ex_date": "2028-08-18",
-          "amount": 1.076078,
+          "amount": 1.097178,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2028-09-11",
+          "pay_date": null,
           "source": "projection",
           "confidence": 0.678,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
@@ -547,21 +549,21 @@
         {
           "symbol": "MSFT",
           "ex_date": "2028-11-17",
-          "amount": 1.181576,
+          "amount": 1.204744,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2028-12-11",
+          "pay_date": null,
           "source": "projection",
-          "confidence": 0.656,
+          "confidence": 0.657,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         },
         {
           "symbol": "MSFT",
           "ex_date": "2029-02-16",
-          "amount": 1.181576,
+          "amount": 1.204744,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2029-03-12",
+          "pay_date": null,
           "source": "projection",
           "confidence": 0.636,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
@@ -569,10 +571,10 @@
         {
           "symbol": "MSFT",
           "ex_date": "2029-05-16",
-          "amount": 1.181576,
+          "amount": 1.204744,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2029-06-07",
+          "pay_date": null,
           "source": "projection",
           "confidence": 0.616,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
@@ -580,12 +582,12 @@
         {
           "symbol": "MSFT",
           "ex_date": "2029-08-17",
-          "amount": 1.181576,
+          "amount": 1.204744,
           "status": "projected",
           "kind": "income",
-          "pay_date": "2029-09-10",
+          "pay_date": null,
           "source": "projection",
-          "confidence": 0.596,
+          "confidence": 0.597,
           "basis": "Held flat at the latest declared rate, with a 9.8% annual raise applied each Nov"
         }
       ]
@@ -595,12 +597,12 @@
       "name": "Fidelity 500 Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr/Jul/Oct/Dec. Yahoo folds any capital-gain distribution into the same stream.",
-      "price": 256.48,
+      "price": 262.49,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 2.801,
-      "yieldPct": 1.0921,
+      "yieldPct": 1.0671,
       "growthRate": 0.04129,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1177,7 +1179,7 @@
           "pay_date": "2028-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.66,
+          "confidence": 0.661,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1237,7 +1239,7 @@
           "pay_date": "2029-07-10",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.622,
+          "confidence": 0.623,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         },
         {
@@ -1249,7 +1251,7 @@
           "pay_date": "2029-10-04",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.576,
+          "confidence": 0.577,
           "basis": "Oct 2026 distribution of $0.7130/share grown +4.1%/yr"
         }
       ]
@@ -1259,12 +1261,12 @@
       "name": "Fidelity Total Market Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr and Dec; December typically also carries the capital-gain distribution.",
-      "price": 203.03,
+      "price": 208.04,
       "currency": "USD",
       "cadence": "semiannual",
       "cadenceDays": 119,
       "trailing12m": 1.95,
-      "yieldPct": 0.9604,
+      "yieldPct": 0.9373,
       "growthRate": 0.02851,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1565,7 +1567,7 @@
           "pay_date": "2027-12-21",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.416,
+          "confidence": 0.417,
           "basis": "Dec 2025 distribution of $1.7860/share grown +2.9%/yr"
         },
         {
@@ -1577,7 +1579,7 @@
           "pay_date": "2028-04-12",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.518,
+          "confidence": 0.519,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
         },
         {
