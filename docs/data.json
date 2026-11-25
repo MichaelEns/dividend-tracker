@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-24T22:30:23+00:00",
-  "asOfDate": "2026-11-24",
+  "generatedAt": "2026-11-25T21:45:21+00:00",
+  "asOfDate": "2026-11-25",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -15,12 +15,12 @@
       "name": "Microsoft Corporation",
       "kind": "equity",
       "notes": "Declares ~3 months ahead. Historically raises the dividend with the September declaration (first raised payment has a November ex-date).",
-      "price": 496.13,
+      "price": 489.93,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 3.71,
-      "yieldPct": 0.7478,
+      "yieldPct": 0.7573,
       "growthRate": 0.10219,
       "warnings": [],
       "distributions": [
@@ -497,7 +497,7 @@
           "kind": "income",
           "pay_date": "2027-12-13",
           "source": "projection",
-          "confidence": 0.749,
+          "confidence": 0.75,
           "basis": "Held flat at the latest declared rate, with a 9.7% annual raise applied each Nov"
         },
         {
@@ -563,7 +563,7 @@
           "kind": "income",
           "pay_date": "2029-06-07",
           "source": "projection",
-          "confidence": 0.619,
+          "confidence": 0.62,
           "basis": "Held flat at the latest declared rate, with a 9.7% annual raise applied each Nov"
         },
         {
@@ -595,12 +595,12 @@
       "name": "Fidelity 500 Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr/Jul/Oct/Dec. Yahoo folds any capital-gain distribution into the same stream.",
-      "price": 251.8,
+      "price": 250.57,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 2.801,
-      "yieldPct": 1.1124,
+      "yieldPct": 1.1179,
       "growthRate": 0.04129,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1117,7 +1117,7 @@
           "pay_date": "2026-12-18",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.839,
+          "confidence": 0.84,
           "basis": "Dec 2025 distribution of $0.7250/share grown +4.1%/yr"
         },
         {
@@ -1141,7 +1141,7 @@
           "pay_date": "2027-07-09",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.808,
+          "confidence": 0.809,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         },
         {
@@ -1189,7 +1189,7 @@
           "pay_date": "2028-07-10",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.711,
+          "confidence": 0.712,
           "basis": "Jul 2026 distribution of $0.6950/share grown +4.1%/yr"
         },
         {
@@ -1201,7 +1201,7 @@
           "pay_date": "2028-10-04",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.658,
+          "confidence": 0.659,
           "basis": "Oct 2026 distribution of $0.7130/share grown +4.1%/yr"
         },
         {
@@ -1249,7 +1249,7 @@
           "pay_date": "2029-10-04",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.579,
+          "confidence": 0.58,
           "basis": "Oct 2026 distribution of $0.7130/share grown +4.1%/yr"
         }
       ]
@@ -1259,12 +1259,12 @@
       "name": "Fidelity Total Market Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr and Dec; December typically also carries the capital-gain distribution.",
-      "price": 199.22,
+      "price": 198.33,
       "currency": "USD",
       "cadence": "semiannual",
       "cadenceDays": 119,
       "trailing12m": 1.95,
-      "yieldPct": 0.9788,
+      "yieldPct": 0.9832,
       "growthRate": 0.02851,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1589,7 +1589,7 @@
           "pay_date": "2028-12-20",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.368,
+          "confidence": 0.369,
           "basis": "Dec 2025 distribution of $1.7860/share grown +2.9%/yr"
         },
         {
