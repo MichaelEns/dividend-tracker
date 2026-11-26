@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-25T21:45:21+00:00",
-  "asOfDate": "2026-11-25",
+  "generatedAt": "2026-11-26T21:38:53+00:00",
+  "asOfDate": "2026-11-26",
   "version": "1.0.0",
   "horizonYears": 3,
   "sources": [
@@ -464,7 +464,7 @@
           "kind": "income",
           "pay_date": "2027-03-11",
           "source": "projection",
-          "confidence": 0.825,
+          "confidence": 0.826,
           "basis": "Held flat at the latest declared rate, with a 9.7% annual raise applied each Nov"
         },
         {
@@ -486,7 +486,7 @@
           "kind": "income",
           "pay_date": "2027-09-09",
           "source": "projection",
-          "confidence": 0.774,
+          "confidence": 0.775,
           "basis": "Held flat at the latest declared rate, with a 9.7% annual raise applied each Nov"
         },
         {
@@ -508,7 +508,7 @@
           "kind": "income",
           "pay_date": "2028-03-10",
           "source": "projection",
-          "confidence": 0.726,
+          "confidence": 0.727,
           "basis": "Held flat at the latest declared rate, with a 9.7% annual raise applied each Nov"
         },
         {
@@ -530,7 +530,7 @@
           "kind": "income",
           "pay_date": "2028-09-11",
           "source": "projection",
-          "confidence": 0.681,
+          "confidence": 0.682,
           "basis": "Held flat at the latest declared rate, with a 9.7% annual raise applied each Nov"
         },
         {
@@ -541,7 +541,7 @@
           "kind": "income",
           "pay_date": "2028-12-12",
           "source": "projection",
-          "confidence": 0.659,
+          "confidence": 0.66,
           "basis": "Held flat at the latest declared rate, with a 9.7% annual raise applied each Nov"
         },
         {
@@ -552,7 +552,7 @@
           "kind": "income",
           "pay_date": "2029-03-12",
           "source": "projection",
-          "confidence": 0.639,
+          "confidence": 0.64,
           "basis": "Held flat at the latest declared rate, with a 9.7% annual raise applied each Nov"
         },
         {
@@ -585,7 +585,7 @@
           "kind": "income",
           "pay_date": "2029-12-11",
           "source": "projection",
-          "confidence": 0.58,
+          "confidence": 0.581,
           "basis": "Held flat at the latest declared rate, with a 9.7% annual raise applied each Nov"
         }
       ]
@@ -595,12 +595,12 @@
       "name": "Fidelity 500 Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr/Jul/Oct/Dec. Yahoo folds any capital-gain distribution into the same stream.",
-      "price": 250.57,
+      "price": 249.94,
       "currency": "USD",
       "cadence": "quarterly",
       "cadenceDays": 91,
       "trailing12m": 2.801,
-      "yieldPct": 1.1179,
+      "yieldPct": 1.1207,
       "growthRate": 0.04129,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1153,7 +1153,7 @@
           "pay_date": "2027-10-05",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.748,
+          "confidence": 0.749,
           "basis": "Oct 2026 distribution of $0.7130/share grown +4.1%/yr"
         },
         {
@@ -1225,7 +1225,7 @@
           "pay_date": "2029-04-06",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.584,
+          "confidence": 0.585,
           "basis": "Apr 2026 distribution of $0.6680/share grown +4.1%/yr"
         },
         {
@@ -1259,12 +1259,12 @@
       "name": "Fidelity Total Market Index Fund",
       "kind": "fund",
       "notes": "Income distributions in Apr and Dec; December typically also carries the capital-gain distribution.",
-      "price": 198.33,
+      "price": 198.1,
       "currency": "USD",
       "cadence": "semiannual",
       "cadenceDays": 119,
       "trailing12m": 1.95,
-      "yieldPct": 0.9832,
+      "yieldPct": 0.9844,
       "growthRate": 0.02851,
       "warnings": [
         "No public feed publishes announced distributions for open-end mutual funds. Future rows are projections until you add the published figure to config/announced.json.",
@@ -1553,7 +1553,7 @@
           "pay_date": "2027-04-13",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.592,
+          "confidence": 0.593,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
         },
         {
@@ -1577,7 +1577,7 @@
           "pay_date": "2028-04-12",
           "pay_date_estimated": true,
           "source": "projection",
-          "confidence": 0.521,
+          "confidence": 0.522,
           "basis": "Apr 2026 distribution of $0.1640/share grown +2.9%/yr"
         },
         {
